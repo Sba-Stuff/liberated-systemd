@@ -192,13 +192,17 @@ int _verbs_get_help_table(
                         /* No help string — we do not show the verb */
                         continue;
 
+                bool is_default = FLAGS_SET(verb->flags, VERB_DEFAULT);
+
                 /* We indent the option string by two spaces. We could set the minimum cell width and
                  * right-align for a similar result, but that'd be more work. This is only used for
                  * display. */
-                r = table_add_cell_stringf(table, NULL, "  %s%s%s",
+                r = table_add_cell_stringf(table, NULL, "  %s%s%s%s%s",
+                                           is_default ? "[" : "",
                                            verb->verb,
                                            verb->argspec ? " " : "",
-                                           strempty(verb->argspec));
+                                           strempty(verb->argspec),
+                                           is_default ? "]" : "");
                 if (r < 0)
                         return table_log_add_error(r);
 

@@ -128,9 +128,22 @@ SPDX-License-Identifier: LGPL-2.1-or-later
 
 ## Features
 
+- bootctl link + sysupdate integration
+  - make sysupdate call out to a special varlink dir on completion
+  - bind bootctl link socket in there, which when invoked goes to new dir in
+    /var/ where downloaded kernels+confext+sysext are dropped in (place in
+    .v/) and then does "bootctl link" on them.
+
+- a tool that can prep credentials, put them in the ESP, for provisioning
+  systems for SBC. Should be doing what sysinstall does with the credentials,
+  and maybe even *be* sysinstall.
+
+- make sure we always pass O_NOFOLLOW on O_CREAT
+
+- xopenat(): maybe imply O_NOFOLLOW on O_CREAT
+
 - StorageProvider interface + storagectl
   - hook-up in systemd-nspawn
-  - hook-up in systemd-vmspawn
   - hook-up in service manager (BindVolume=)
   - introduce a locking concept: right now all access to volumes is fully
     shared. Let's add a basic locking concept: supporting backends can take an
@@ -142,6 +155,12 @@ SPDX-License-Identifier: LGPL-2.1-or-later
     to: when the last varlink connection that acquired them goes away, the
     volume is auto-destroyed. Would be exposed via a new flag on the Acquire
     call, similar to the locking logic above.
+
+- clean up credential naming a bit: let's say encrypted creds always should
+  carry .cred suffix, and unencrypted should not.
+
+- clean up naming of sidecar files in sd-stub: let's put global ones strictly
+  into /loader/extras/
 
 - a small tool that can do basic btrfs raid policy mgmt. i.e. gets started as
   part of the initial transaction for some btrfs raid fs, waits for some time,
@@ -176,6 +195,17 @@ SPDX-License-Identifier: LGPL-2.1-or-later
   use as additional search condition. Use case: images that combined a sysext
   partition with a portable service partition in one.
 
+- **systemd-sysinstall:**
+  - make systemd-sysinstall itself a varlink service
+  - read installation definition from json file
+  - polkit support in sysinstall
+  - sysinstall: permit driving installer via credentials
+  - add --offline=no mode where we talk to socket based services rather than forking off
+  - if a user doesn't pick a locale during boot into installer, don't ask again after install, because we suppressed credential propagation
+
+- repart: add MatchLabel= which matches against partition label, so that we
+  truly can install different images in parallel
+
 - add "systemctl wait" or so, which does what "systemd-run --wait" does, but
   for all units. It should be both a way to pin units into memory as well as a
   wait to retrieve their exit data.
@@ -201,8 +231,8 @@ SPDX-License-Identifier: LGPL-2.1-or-later
   - download list + report updates in motd – but do not auto update
   - download list + download new version – but do not apply it
   - download list + download new version + apply it – but do not reboot
-  - download list + donwload new version + apply it + reboot
-  Other things the policy shoudl contain is when to place the reboot.
+  - download list + download new version + apply it + reboot
+  Other things the policy should contain is when to place the reboot.
   This would all decouple the updating of the package list from the application
   of it. Which is great for "countme" style stuff.
 
@@ -338,7 +368,7 @@ SPDX-License-Identifier: LGPL-2.1-or-later
 
 - add bus API to retrieve current unit file contents (i.e. implement "systemctl cat" on the bus only)
 
-- Add ConditionDirectoryNotEmpty= handle non-absoute paths as a search path or add
+- Add ConditionDirectoryNotEmpty= handle non-absolute paths as a search path or add
   ConditionConfigSearchPathNotEmpty= or different syntax? See the discussion starting at
   https://github.com/systemd/systemd/pull/15109#issuecomment-607740136.
 
@@ -1190,14 +1220,6 @@ SPDX-License-Identifier: LGPL-2.1-or-later
 
 - introduce a new group to own TPM devices
 
-- introduce a small "systemd-installer" tool or so, that glues
-  systemd-repart-as-installer and bootctl-install into one. Would just
-  interactively ask user for target disk (with completion and so on), and then do
-  two varlink calls to the the two tools with the right parameters. To support
-  "offline" operation, optionally invoke the two tools directly as child
-  processes with varlink communication over socketpair(). This all should be
-  useful as blueprint for graphical installers which should do the same.
-
 - introduce an option (or replacement) for "systemctl show" that outputs all
   properties as JSON, similar to busctl's new JSON output. In contrast to that
   it should skip the variant type string though.
@@ -1533,7 +1555,7 @@ SPDX-License-Identifier: LGPL-2.1-or-later
   and stick around for the whole system runtime (i.e. root fs storage daemons,
   the bpf loader daemon discussed above, and such) are placed. maybe
   protected.slice or so? Then write docs that suggest that services like this
-  set Slice=protected.sice, RefuseManualStart=yes, RefuseManualStop=yes and a
+  set Slice=protected.slice, RefuseManualStart=yes, RefuseManualStop=yes and a
   couple of other things.
 
 - maybe add call sd_journal_set_block_timeout() or so to set SO_SNDTIMEO for
@@ -1827,7 +1849,7 @@ SPDX-License-Identifier: LGPL-2.1-or-later
 
 - oci: add support for "importctl import-oci" which implements the "OCI layout"
   spec (i.e. acquiring via local fs access), as opposed to the current
-  "importctl pull-oci" which focusses on the "OCI image spec", i.e. downloads
+  "importctl pull-oci" which focuses on the "OCI image spec", i.e. downloads
   from the web (i.e. acquiring via URLs).
 
 - oci: add support for blake hashes for layers
@@ -2163,10 +2185,6 @@ SPDX-License-Identifier: LGPL-2.1-or-later
 
 - run0: maybe enable utmp for run0 sessions, so that they are easily visible.
 
-- sd-boot/sd-stub: install a uefi "handle" to a sidecar dir of bls type #1
-  entries with an "uki" or "uki-url" stanza, and make sd-stub look for
-  that. That way we can parameterize type #1 entries nicely.
-
 - **sd-boot:**
   - do something useful if we find exactly zero entries (ignoring items
     such as reboot/poweroff/factory reset). Show a help text or so.
@@ -2485,10 +2503,6 @@ SPDX-License-Identifier: LGPL-2.1-or-later
     that we can sanely copy ESP contents, /usr/ images, and then set up btrfs
     raid for the root fs to extend/mirror the existing install. This would be
     very similar to the concept of live-install-through-btrfs-migration.
-  - add --installer or so, that will interactively ask for a
-    target disk, maybe ask for confirmation, and install something on disk. Then,
-    hook that into installer.target or so, so that it can be used to
-    install/replicate installs
   - should probably enable btrfs' "temp_fsid" feature for all file
     systems it creates, as we have no interest in RAID for repart, and it should
     make sure that we can mount them trivially everywhere.

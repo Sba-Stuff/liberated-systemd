@@ -88,6 +88,7 @@
 #include "user-record.h"
 #include "user-util.h"
 #include "utf8.h"
+#include "vmspawn-bind-volume.h"
 #include "vmspawn-mount.h"
 #include "vmspawn-qemu-config.h"
 #include "vmspawn-qmp.h"
@@ -163,6 +164,7 @@ static bool arg_keep_unit = false;
 static sd_id128_t arg_uuid = {};
 static char **arg_kernel_cmdline_extra = NULL;
 static ExtraDriveContext arg_extra_drives = {};
+static BindVolumes arg_bind_volumes = {};
 static char *arg_background = NULL;
 static bool arg_pass_ssh_key = true;
 static char *arg_ssh_key_type = NULL;
@@ -200,6 +202,7 @@ STATIC_DESTRUCTOR_REGISTER(arg_runtime_mounts, runtime_mount_context_done);
 STATIC_DESTRUCTOR_REGISTER(arg_forward_journal, freep);
 STATIC_DESTRUCTOR_REGISTER(arg_kernel_cmdline_extra, strv_freep);
 STATIC_DESTRUCTOR_REGISTER(arg_extra_drives, extra_drive_context_done);
+STATIC_DESTRUCTOR_REGISTER(arg_bind_volumes, bind_volumes_done);
 STATIC_DESTRUCTOR_REGISTER(arg_background, freep);
 STATIC_DESTRUCTOR_REGISTER(arg_ssh_key_type, freep);
 STATIC_DESTRUCTOR_REGISTER(arg_smbios11, strv_freep);
@@ -763,6 +766,36 @@ static int parse_argv(int argc, char *argv[]) {
                                 .format = format,
                                 .disk_type = extra_disk_type,
                         };
+                        break;
+                }
+
+                OPTION_LONG("bind-volume", "PROVIDER:VOLUME[:CONFIG][:KEY=VALUE,...]",
+                            "Acquire a storage volume from a StorageProvider and attach it to the VM"): {
+                        _cleanup_(bind_volume_freep) BindVolume *bv = NULL;
+
+                        r = bind_volume_parse(opts.arg, &bv);
+                        if (r < 0)
+                                return log_error_errno(r, "Failed to parse --bind-volume= argument '%s': %m", opts.arg);
+
+                        if (disk_type_from_bind_volume_config(bv->config) < 0) {
+                                _cleanup_free_ char *valid = NULL;
+                                for (DiskType t = 0; t < _DISK_TYPE_MAX; t++)
+                                        if (!strextend_with_separator(&valid, ", ", disk_type_to_string(t)))
+                                                return log_oom();
+                                return log_error_errno(SYNTHETIC_ERRNO(EINVAL),
+                                                       "Unknown device type '%s' for --bind-volume=. Valid values: %s.",
+                                                       bv->config, valid);
+                        }
+
+                        FOREACH_ARRAY(it, arg_bind_volumes.items, arg_bind_volumes.n_items)
+                                if (streq((*it)->provider, bv->provider) && streq((*it)->volume, bv->volume))
+                                        return log_error_errno(SYNTHETIC_ERRNO(EINVAL),
+                                                               "Volume '%s:%s' specified more than once for --bind-volume=.",
+                                                               bv->provider, bv->volume);
+
+                        if (!GREEDY_REALLOC(arg_bind_volumes.items, arg_bind_volumes.n_items + 1))
+                                return log_oom();
+                        arg_bind_volumes.items[arg_bind_volumes.n_items++] = TAKE_PTR(bv);
                         break;
                 }
 
@@ -2475,7 +2508,7 @@ static int prepare_device_info(const char *runtime_dir, MachineConfig *c) {
 
         /* Build drive info for QMP-based setup. vmspawn opens all image files and
          * passes fds to QEMU via add-fd — QEMU never needs filesystem access. */
-        drives->drives = new0(DriveInfo*, 1 + arg_extra_drives.n_drives);
+        drives->drives = new0(DriveInfo*, 1 + arg_extra_drives.n_drives + arg_bind_volumes.n_items);
         if (!drives->drives)
                 return log_oom();
 
@@ -2484,6 +2517,10 @@ static int prepare_device_info(const char *runtime_dir, MachineConfig *c) {
                 return r;
 
         r = prepare_extra_drives(drives);
+        if (r < 0)
+                return r;
+
+        r = vmspawn_bind_volume_prepare_boot(arg_runtime_scope, &arg_bind_volumes, drives);
         if (r < 0)
                 return r;
 
@@ -2928,9 +2965,9 @@ static int run_virtual_machine(int kvm_device_fd, int vhost_device_fd) {
                         return r;
 
                 r = qemu_config_section(config_file, "chardev", "vdagent",
-                                        "backend", "spicevmc",
-                                        "debug", "0",
-                                        "name", "vdagent");
+                                        "backend", "qemu-vdagent",
+                                        "clipboard", "on",
+                                        "debug", "0");
                 if (r < 0)
                         return r;
 
@@ -2938,6 +2975,23 @@ static int run_virtual_machine(int kvm_device_fd, int vhost_device_fd) {
                                         "driver", "virtserialport",
                                         "chardev", "vdagent",
                                         "name", "org.qemu.guest_agent.0");
+                if (r < 0)
+                        return r;
+
+                /* Attach a USB xHCI controller and a USB keyboard. We prefer USB over the implicit PS/2
+                 * keyboard so that EDK2's UsbKbDxe driver runs, which registers the default HII keyboard
+                 * layout package — the PS/2 driver does not. That makes
+                 * EFI_HII_DATABASE_PROTOCOL.GetKeyboardLayout() return a usable layout, which systemd-boot
+                 * then exports via the LoaderKeyboardLayout EFI variable, which is useful for testing that
+                 * codepath actually works. */
+                r = qemu_config_section(config_file, "device", "xhci0",
+                                        "driver", "qemu-xhci");
+                if (r < 0)
+                        return r;
+
+                r = qemu_config_section(config_file, "device", "usb-kbd0",
+                                        "driver", "usb-kbd",
+                                        "bus", "xhci0.0");
                 if (r < 0)
                         return r;
 

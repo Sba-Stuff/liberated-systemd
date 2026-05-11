@@ -9,15 +9,16 @@
 #include "sd-forward.h"
 #include "string-util.h"        /* IWYU pragma: keep */
 
-#define ENVIRONMENT_ASSIGNMENTS_MAX 1024U
-
-#define JSON_VARIANT_REPLACE(v, q)        \
-        do {                              \
-                typeof(v)* _v = &(v);     \
-                typeof(q) _q = (q);       \
+#define JSON_VARIANT_REPLACE(v, q)           \
+        do {                                 \
+                typeof(v)* _v = &(v);        \
+                typeof(q) _q = (q);          \
                 sd_json_variant_unref(*_v);  \
-                *_v = _q;                 \
+                *_v = _q;                    \
         } while(false)
+
+#define json_variant_unref_and_replace(a, b) \
+        free_and_replace_full(a, b, sd_json_variant_unref)
 
 static inline int json_variant_set_field_non_null(sd_json_variant **v, const char *field, sd_json_variant *value) {
         return value && !sd_json_variant_is_null(value) ? sd_json_variant_set_field(v, field, value) : 0;
@@ -270,6 +271,8 @@ enum {
         SD_JSON_BUILD_PAIR_CONDITION(condition, name, SD_JSON_BUILD_UNSIGNED(value))
 #define JSON_BUILD_PAIR_CONDITION_BOOLEAN(condition, name, value) \
         SD_JSON_BUILD_PAIR_CONDITION(condition, name, SD_JSON_BUILD_BOOLEAN(value))
+#define JSON_BUILD_PAIR_CONDITION_STRING(condition, name, value) \
+        SD_JSON_BUILD_PAIR_CONDITION(condition, name, SD_JSON_BUILD_STRING(value))
 #define JSON_BUILD_PAIR_CONDITION_STRV(condition, name, value) \
         SD_JSON_BUILD_PAIR_CONDITION(condition, name, SD_JSON_BUILD_STRV(value))
 

@@ -50,8 +50,12 @@ varlinkctl list-methods /run/systemd/report/io.systemd.Network
 varlinkctl --more call /run/systemd/report/io.systemd.Network io.systemd.Metrics.List {}
 varlinkctl --more call /run/systemd/report/io.systemd.Network io.systemd.Metrics.Describe {}
 
-# Make sure the service for "system facts" is enabled
-systemctl start systemd-report-basic.socket
+# test io.systemd.Basic Metrics
+[[ "$(systemctl is-enabled systemd-report-basic.socket)" == enabled ]]
+varlinkctl info /run/systemd/report/io.systemd.Basic
+varlinkctl list-methods /run/systemd/report/io.systemd.Basic
+varlinkctl --more call /run/systemd/report/io.systemd.Basic io.systemd.Metrics.List {}
+varlinkctl --more call /run/systemd/report/io.systemd.Basic io.systemd.Metrics.Describe {}
 
 # Test HTTP upload (plain http)
 FAKE_SERVER=/usr/lib/systemd/tests/integration-tests/TEST-74-AUX-UTILS/TEST-74-AUX-UTILS.units/fake-report-server.py
@@ -67,7 +71,11 @@ trap at_exit EXIT
 systemd-run -p Type=notify --unit=fake-report-server "$FAKE_SERVER"
 systemctl status fake-report-server
 
-"$REPORT" metrics --url=http://localhost:8089/
+"$REPORT" generate io.systemd.Manager.UnitsTotal
+
+"$REPORT" generate io.systemd.Manager.UnitsTotal | jq .
+
+"$REPORT" upload --url=http://localhost:8089/
 
 # Test HTTPS upload with generated TLS certificates
 openssl req -x509 -newkey rsa:2048 -keyout "$CERTDIR/server.key" -out "$CERTDIR/server.crt" \
@@ -77,5 +85,5 @@ systemd-run -p Type=notify --unit=fake-report-server-tls \
     "$FAKE_SERVER" --cert="$CERTDIR/server.crt" --key="$CERTDIR/server.key" --port=8090
 systemctl status fake-report-server-tls
 
-"$REPORT" metrics --url=https://localhost:8090/ --key=- --trust="$CERTDIR/server.crt" \
+"$REPORT" upload --url=https://localhost:8090/ --key=- --trust="$CERTDIR/server.crt" \
           --extra-header='Authorization: Bearer magic string'
