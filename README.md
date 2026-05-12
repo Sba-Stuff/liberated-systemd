@@ -8,7 +8,7 @@ See the dev log here: https://github.com/Jeffrey-Sardina/systemd-suite/blob/main
 ## Purpose
 The purpose of Liberated `systemd` is to do exactly one thing, and do it well: removing surveillance enablement from base `systemd`. Specifically, here is what I mean by surveillance: **surveillance is the tooling that enables or facilitates collection of any personal information that does not arise from technical needs for `systemd`**. The primary offender of this is, of course, age verification. If `systemd` later adds in support for other surveillance mechanisms, those will also be removed.
 
-What this also means is that Liberated `systemd` is not a divergent development project. It will not introduce new features, correct bugs or security issues, or implement optimizations. If you want to contribute to any of those things, the correct way to do so is to raise a PR against the base `systemd/systemd` repo. This repo exists only to remove surveillance enablement.
+What this also means is that Liberated `systemd` is not a divergent development project. It will not introduce new features, correct bugs or security issues, or implement optimizations. If you want to contribute to any of those things, the correct way to do so is to raise a PR against the base `systemd` repo. This repo exists only to remove surveillance enablement.
 
 ## Installation
 Detailed blog post: https://medium.com/@jeffrey.sardina/installing-liberating-systemd-a-guide-by-the-author-2a9823192dd3
@@ -24,10 +24,10 @@ Further, Systemd is the first process to run on your computer -- if you corrupt 
 - have backups of all your data
 - have a live-bootable USB / CD / etc just in case
 - go slowly, and understand the effects of all commands before you run them
-- Don't install anything else at the same time as Liberated systemd, and reboot after you install. This way, if you run into issues, you can track down what caused it more easily. Only install other programs once you've verified Liberated systemd is working correctly on a fresh boot.
+- don't install anything else at the same time as Liberated systemd, and reboot after you install. This way, if you run into issues, you can track down what caused it more easily. Only install other programs once you've verified Liberated systemd is working correctly on a fresh boot.
 - make sure your distro is using systemd! *Almost* all Linux distros do (Debian, Ubuntu, Arch, Fedora, Red Hat, etc). But some distros, such as Artix and Void, use other init systems (and are anti-surveillance already). Liberated systemd only matters if your distro runs systemd.
 
-Everyone's local setup is different, and what works for one personmight not work for you. I highly recommend test-installing in a VM before running on your actual computer.
+Everyone's local setup is different, and what works for one person might not work for you. I highly recommend test-installing in a VM before running on your actual computer.
 
 ### Install from source
 Here is the set of commands you can use to install Liberated systemd from source. This is how I run Liberated systemd on my Arch and Ubuntu (26.04 / "resolute") systems, although the commands should work on any Linux distro. First, we check the current version of systemd:
@@ -124,7 +124,7 @@ Only in meta-data files. Specifically, aside from code changes needed to liberat
 - the Security page (`docs/SECURITY.md`)
     - this has been edited to direct all security-related concerns to base `systemd`.
 - the Citation file (`CITATION.cff`)
-    - this has been edited to correctly identify this repo as Liberated `systemd`, a fork of `systemd/systemd`.
+    - this has been edited to correctly identify this repo as Liberated `systemd`, a fork of `systemd`.
 
 The original `systemd` readme is included below for reference.
 
