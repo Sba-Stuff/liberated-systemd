@@ -85,7 +85,7 @@ systemctl --version # output should be different than the previous version check
 
 Reboot your computer, and congratulations! Your computer is now liberated from age verification enablement!
 
-**Note that installing this way won't have automatic upodate. You'll need to update manually to keep your system secure with the latest security patches.
+**Note that installing this way won't have automatic updates. You'll need to update manually to keep your system secure with the latest security patches.
 
 ### List of community repos
 There are community-made packages you can install (aside - I'm stunned that others have done this, and absolutely love it!). That said, I did not create these, have not tested them, and cannot take credit (or responsibility) for them - so make sure you understand what they are doing before you install them. But if you'd like, here is a list of the ones I am aware of:
