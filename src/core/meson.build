@@ -7,6 +7,7 @@ libcore_sources = files(
         'bpf-firewall.c',
         'bpf-foreign.c',
         'bpf-restrict-fs.c',
+        'bpf-restrict-fsaccess.c',
         'bpf-restrict-ifaces.c',
         'bpf-socket-bind.c',
         'bpf-bind-iface.c',
@@ -84,6 +85,10 @@ if conf.get('BPF_FRAMEWORK') == 1
         foreach name : ['socket-bind', 'restrict-fs', 'restrict-ifaces', 'bind-iface']
                 libcore_sources += bpf_programs_by_name[name]
         endforeach
+endif
+
+if conf.get('HAVE_LSM_INTEGRITY_TYPE') == 1
+        libcore_sources += bpf_programs_by_name['restrict-fsaccess']
 endif
 
 sources += libcore_sources

@@ -32,7 +32,7 @@ static void shift_arg(char* argv[], int target, int source) {
         assert(argv);
         assert(target <= source);
 
-        /* Move argv[source] before argv[target], shifting arguments inbetween */
+        /* Move argv[source] before argv[target], shifting the arguments in between. */
         char *saved = argv[source];
         memmove(argv + target + 1, argv + target, (source - target) * sizeof(char*));
         argv[target] = saved;

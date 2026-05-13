@@ -256,11 +256,6 @@ executables += [
         },
         test_template + {
                 'sources' : files('test-btrfs.c'),
-                'type' : 'manual',
-        },
-        test_template + {
-                'sources' : files('test-btrfs-physical-offset.c'),
-                'type' : 'manual',
         },
         test_template + {
                 'sources' : files('test-chase-manual.c'),
@@ -543,6 +538,11 @@ executables += [
         core_test_template + {
                 'sources' : files('test-bpf-restrict-fs.c'),
                 'dependencies' : common_test_dependencies,
+        },
+        core_test_template + {
+                'sources' : files('test-bpf-restrict-fsaccess.c'),
+                'dependencies' : common_test_dependencies,
+                'type' : 'manual',
         },
         core_test_template + {
                 'sources' : files('test-bpf-token.c'),
