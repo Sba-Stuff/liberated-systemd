@@ -4629,7 +4629,7 @@ static int parse_argv(int argc, char *argv[]) {
                                 if (!eq) { /* --blob=/some/path replaces the blob dir */
                                         r = parse_path_argument(optarg, /* suppress_root= */ false, &arg_blob_dir);
                                         if (r < 0)
-                                                return log_error_errno(r, "Failed to parse path %s: %m", optarg);
+                                                return r;
                                         break;
                                 }
 
@@ -4645,7 +4645,7 @@ static int parse_argv(int argc, char *argv[]) {
 
                                 r = parse_path_argument(eq + 1, /* suppress_root= */ false, &path);
                                 if (r < 0)
-                                        return log_error_errno(r, "Failed to parse path %s: %m", eq + 1);
+                                        return r;
                         } else {
                                 const char *well_known_filename =
                                                   c == ARG_AVATAR ? "avatar" :
@@ -4659,7 +4659,7 @@ static int parse_argv(int argc, char *argv[]) {
 
                                 r = parse_path_argument(optarg, /* suppress_root= */ false, &path);
                                 if (r < 0)
-                                        return log_error_errno(r, "Failed to parse path %s: %m", optarg);
+                                        return r;
                         }
 
                         if (path) {

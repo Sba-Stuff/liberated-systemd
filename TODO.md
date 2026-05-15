@@ -142,7 +142,7 @@ SPDX-License-Identifier: LGPL-2.1-or-later
   some JSON fragment rather than transfer files, so that we can update it
   independently from any DDI, and it needs no activation cycle. Why? so that
   making additional transfers/components/features available can be done without
-  reloading confext/sysext, and out-band with other configuratoin changes.
+  reloading confext/sysext, and out-band with other configuration changes.
 
 - sysupdate: go through all components, and update them all, one by one.
 
@@ -3030,6 +3030,9 @@ SPDX-License-Identifier: LGPL-2.1-or-later
 
 - whenever we receive fds via SCM_RIGHTS make sure none got dropped due to the
   reception limit the kernel silently enforces.
+
+- after option+verb introspection is added, add a test to verify that the
+  list in proc-cmdline.c matches the actual option list in systemd and shutdown.
 
 - write a document explaining how to write correct udev rules. Mention things
   such as:

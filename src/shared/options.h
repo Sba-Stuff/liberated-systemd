@@ -80,6 +80,10 @@ typedef struct Option {
 #define OPTION_POSITIONAL OPTION_FULL(OPTION_POSITIONAL_ENTRY, /* sc= */ 0, "(positional)", /* mv= */ NULL, /* h= */ NULL)
 #define OPTION_HELP_VERBATIM(lc, h) OPTION_FULL(OPTION_HELP_ENTRY_VERBATIM, /* sc= */ 0, lc, /* mv= */ NULL, h)
 
+/* This can be used when custom error handling is needed. */
+#define OPTION_ERROR                                                    \
+        case INT_MIN ... -1
+
 #define OPTION_COMMON_HELP                                              \
         OPTION('h', "help", NULL, "Show this help")
 
@@ -136,6 +140,15 @@ typedef struct Option {
 #define OPTION_COMMON_LOWERCASE_J                                       \
         OPTION_SHORT('j', NULL,                                         \
                      "Equivalent to --json=pretty (on TTY) or --json=short (otherwise)")
+
+#define OPTION_COMMON_ENTRY_TOKEN                                       \
+        OPTION_LONG("entry-token", "TOKEN",                             \
+                    "Entry token to use for this installation "         \
+                    "(machine-id, os-id, os-image-id, auto, literal:…)")
+
+#define OPTION_COMMON_MAKE_ENTRY_DIRECTORY                              \
+        OPTION_LONG("make-entry-directory",                             \
+                    "BOOL|auto", "Create $BOOT/ENTRY-TOKEN/ directory")
 
 #define OPTION_COMMON_PRIVATE_KEY(purpose)                              \
         OPTION_LONG("private-key", "PATH|URI", purpose)
