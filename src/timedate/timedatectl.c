@@ -180,7 +180,7 @@ static int print_status_info(const StatusInfo *i) {
         return 0;
 }
 
-VERB(verb_status, "status", NULL, VERB_ANY, 1, VERB_DEFAULT, "Show current time settings");
+VERB_DEFAULT_NOARG(verb_status, "status", "Show current time settings");
 static int verb_status(int argc, char *argv[], uintptr_t _data, void *userdata) {
         StatusInfo info = {};
         static const struct bus_properties_map map[]  = {
@@ -1028,7 +1028,7 @@ static int run(int argc, char *argv[]) {
 
         (void) sd_bus_set_allow_interactive_authorization(bus, arg_ask_password);
 
-        return dispatch_verb_with_args(args, bus);
+        return dispatch_verb(args, bus);
 }
 
 DEFINE_MAIN_FUNCTION(run);

@@ -20,6 +20,7 @@
 #include "json-util.h"
 #include "network-common.h"
 #include "set.h"
+#include "socket-util.h"
 #include "sort-util.h"
 #include "string-util.h"
 #include "unaligned.h"
@@ -1341,6 +1342,11 @@ static int dhcp_message_verify_header(
         if (iov->iov_len < sizeof(DHCPMessageHeader))
                 return -EBADMSG;
 
+        /* DHCP travels over UDP, so anything larger than the maximum UDP payload cannot be a valid
+         * message and would also be impossible to rebuild as a UDP packet. */
+        if (iov->iov_len > UDP_PAYLOAD_MAX_SIZE)
+                return -EBADMSG;
+
         const DHCPMessageHeader *header = iov->iov_base;
 
         if (!IN_SET(header->op, BOOTREQUEST, BOOTREPLY))
@@ -1408,16 +1414,35 @@ int dhcp_message_parse(
                 r = tlv_parse(&message->options, &IOVEC_MAKE(message->header.file, sizeof(message->header.file)));
                 if (r < 0)
                         return r;
+
+                /* The content of the overloaded field has been merged into options. Clear it so that the
+                 * field is not re-parsed (which would duplicate the options) and not re-emitted verbatim
+                 * by dhcp_message_build(), ensuring parse/build is idempotent. */
+                memzero(message->header.file, sizeof(message->header.file));
         }
 
         if (FLAGS_SET(overload, DHCP_OVERLOAD_SNAME)) {
                 r = tlv_parse(&message->options, &IOVEC_MAKE(message->header.sname, sizeof(message->header.sname)));
                 if (r < 0)
                         return r;
+
+                memzero(message->header.sname, sizeof(message->header.sname));
         }
 
         *ret = TAKE_PTR(message);
         return 0;
+}
+
+size_t dhcp_message_payload_size(sd_dhcp_message *message) {
+        assert(message);
+
+        return MAX(size_add(sizeof(DHCPMessageHeader), tlv_size(&message->options)), BOOTP_MESSAGE_SIZE);
+}
+
+size_t dhcp_message_packet_size(sd_dhcp_message *message) {
+        assert(message);
+
+        return size_add(sizeof(struct iphdr) + sizeof(struct udphdr), dhcp_message_payload_size(message));
 }
 
 int dhcp_message_build(sd_dhcp_message *message, struct iovec_wrapper *ret) {
@@ -1643,5 +1668,128 @@ int dhcp_message_parse_json(sd_json_variant *v, sd_dhcp_message **ret) {
         }
 
         *ret = TAKE_PTR(message);
+        return 0;
+}
+
+int dhcp_message_send_udp(
+                sd_dhcp_message *message,
+                int fd,
+                be32_t src_addr,
+                be32_t dst_addr,
+                uint16_t dst_port) {
+
+        int r;
+
+        assert(message);
+        assert(fd >= 0);
+
+        _cleanup_(iovw_done_free) struct iovec_wrapper payload = {};
+        r = dhcp_message_build(message, &payload);
+        if (r < 0)
+                return r;
+
+        union sockaddr_union sa = {
+                .in.sin_family = AF_INET,
+                .in.sin_port = htobe16(dst_port),
+                .in.sin_addr.s_addr = dst_addr,
+        };
+
+        CMSG_BUFFER_TYPE(CMSG_SPACE(sizeof(struct in_pktinfo))) control = {};
+
+        struct msghdr msg = {
+                .msg_name = &sa,
+                .msg_namelen = sizeof(sa.in),
+                .msg_iov = payload.iovec,
+                .msg_iovlen = payload.count,
+        };
+
+        if (src_addr != INADDR_ANY) {
+                msg.msg_control = &control;
+                msg.msg_controllen = sizeof(control);
+
+                struct cmsghdr *cmsg = ASSERT_PTR(CMSG_FIRSTHDR(&msg));
+                cmsg->cmsg_level = IPPROTO_IP;
+                cmsg->cmsg_type = IP_PKTINFO;
+                cmsg->cmsg_len = CMSG_LEN(sizeof(struct in_pktinfo));
+
+                struct in_pktinfo *pktinfo = ASSERT_PTR(CMSG_TYPED_DATA(cmsg, struct in_pktinfo));
+                pktinfo->ipi_spec_dst.s_addr = src_addr;
+        }
+
+        if (sendmsg(fd, &msg, MSG_NOSIGNAL) < 0)
+                return -errno;
+
+        return 0;
+}
+
+int dhcp_message_send_raw(
+                sd_dhcp_message *message,
+                int fd,
+                int ifindex,
+                be32_t src_addr,
+                uint16_t src_port,
+                const struct hw_addr_data *dst_hw_addr,
+                be32_t dst_addr,
+                uint16_t dst_port,
+                int ip_service_type) {
+
+        int r;
+
+        assert(message);
+        assert(fd >= 0);
+        assert(ifindex > 0);
+        assert(dst_hw_addr);
+
+        _cleanup_(iovw_done_free) struct iovec_wrapper payload = {};
+        r = dhcp_message_build(message, &payload);
+        if (r < 0)
+                return r;
+
+        struct iphdr ip;
+        struct udphdr udp;
+        r = udp_packet_build(
+                        src_addr,
+                        src_port,
+                        dst_addr,
+                        dst_port,
+                        ip_service_type,
+                        &payload,
+                        &ip,
+                        &udp);
+        if (r < 0)
+                return r;
+
+        _cleanup_(iovw_done) struct iovec_wrapper iovw = {};
+        r = iovw_put(&iovw, &ip, sizeof(struct iphdr));
+        if (r < 0)
+                return r;
+
+        r = iovw_put(&iovw, &udp, sizeof(struct udphdr));
+        if (r < 0)
+                return r;
+
+        r = iovw_put_iovw(&iovw, &payload);
+        if (r < 0)
+                return r;
+
+        union sockaddr_union sa = {
+                .ll.sll_family = AF_PACKET,
+                .ll.sll_protocol = htobe16(ETH_P_IP),
+                .ll.sll_ifindex = ifindex,
+                .ll.sll_halen = dst_hw_addr->length,
+        };
+
+        memcpy_safe(sa.ll.sll_addr, dst_hw_addr->bytes, dst_hw_addr->length);
+
+        struct msghdr mh = {
+                .msg_name = &sa.sa,
+                .msg_namelen = sockaddr_ll_len(&sa.ll),
+                .msg_iov = iovw.iovec,
+                .msg_iovlen = iovw.count,
+        };
+
+        if (sendmsg(fd, &mh, MSG_NOSIGNAL) < 0)
+                return -errno;
+
         return 0;
 }

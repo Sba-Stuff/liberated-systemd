@@ -26,8 +26,8 @@ else
         project_minor_version = '0'
 endif
 
-libsystemd_version = '0.43.0'
-libudev_version = '1.7.13'
+libsystemd_version = '0.44.0'
+libudev_version = '1.7.14'
 
 conf = configuration_data()
 conf.set_quoted('PROJECT_URL', 'https://systemd.io/')
@@ -1184,22 +1184,14 @@ libqrencode = dependency('libqrencode',
 libqrencode_cflags = libqrencode.partial_dependency(includes: true, compile_args: true)
 conf.set10('HAVE_QRENCODE', libqrencode.found())
 
-feature = get_option('gcrypt')
 libgcrypt = dependency('libgcrypt',
-                       required : feature)
-libgpg_error = dependency('gpg-error',
-                          required : feature)
-
-have = libgcrypt.found() and libgpg_error.found()
-if not have
-        # link to neither of the libs if one is not found
-        libgcrypt = []
-        libgpg_error = []
-        libgcrypt_cflags = []
-else
+                       required : get_option('gcrypt'))
+conf.set10('HAVE_GCRYPT', libgcrypt.found())
+if libgcrypt.found()
         libgcrypt_cflags = libgcrypt.partial_dependency(includes: true, compile_args: true)
+else
+        libgcrypt_cflags = []
 endif
-conf.set10('HAVE_GCRYPT', have)
 
 libgnutls = dependency('gnutls',
                        version : '>= 3.1.4',
@@ -1844,8 +1836,7 @@ if static_libudev != 'false'
                 install_tag: 'libudev',
                 install_dir : libdir,
                 link_depends : libudev_sym,
-                dependencies : [libmount,
-                                libshared_deps,
+                dependencies : [libshared_deps,
                                 userspace],
                 c_args : static_libudev_pic ? [] : ['-fno-PIC'],
                 pic : static_libudev_pic)

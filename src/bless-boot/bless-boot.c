@@ -339,7 +339,7 @@ static int make_bad(const char *prefix, uint64_t done, const char *suffix, char 
         return 0;
 }
 
-VERB(verb_status, "status", NULL, VERB_ANY, 1, VERB_DEFAULT, "Show status of current boot loader entry");
+VERB_DEFAULT_NOARG(verb_status, "status", "Show status of current boot loader entry");
 static int verb_status(int argc, char *argv[], uintptr_t _data, void *userdata) {
         _cleanup_free_ char *path = NULL, *prefix = NULL, *suffix = NULL, *good = NULL, *bad = NULL;
         uint64_t left, done;
@@ -580,7 +580,7 @@ static int run(int argc, char *argv[]) {
                 return log_error_errno(SYNTHETIC_ERRNO(EOPNOTSUPP),
                                        "Marking a boot is only supported on EFI systems.");
 
-        return dispatch_verb_with_args(args, NULL);
+        return dispatch_verb(args, NULL);
 }
 
 DEFINE_MAIN_FUNCTION(run);

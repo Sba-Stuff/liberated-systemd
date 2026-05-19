@@ -269,8 +269,7 @@ static int list_sessions_table_add_fallback(Table *table, sd_bus_message *reply,
 
 VERB_GROUP("Session Commands");
 
-VERB(verb_list_sessions, "list-sessions", NULL, VERB_ANY, 1, VERB_DEFAULT,
-     "List sessions");
+VERB_DEFAULT_NOARG(verb_list_sessions, "list-sessions", "List sessions");
 static int verb_list_sessions(int argc, char *argv[], uintptr_t _data, void *userdata) {
         sd_bus *bus = ASSERT_PTR(userdata);
         _cleanup_(sd_bus_error_free) sd_bus_error error = SD_BUS_ERROR_NULL;
@@ -1681,7 +1680,7 @@ static int run(int argc, char *argv[]) {
 
         (void) sd_bus_set_allow_interactive_authorization(bus, arg_ask_password);
 
-        return dispatch_verb_with_args(args, bus);
+        return dispatch_verb(args, bus);
 }
 
 DEFINE_MAIN_FUNCTION(run);

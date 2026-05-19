@@ -128,6 +128,20 @@ SPDX-License-Identifier: LGPL-2.1-or-later
 
 ## Features
 
+- Reuse the LoaderKeyboardLayout EFI variable/find_vconsole_keymap_for_bcp47()
+  to pre-select kbd layout in systemd-firstboot. (Right now it's only used in
+  vconsole-setup as fallback).
+
+- Start using the PlatformLang EFI variable to pre-select language in
+  systemd-firstboot. (At least HP laptops seem to make good use of/configure
+  the value)
+
+- format-table: introduce the concept of a "title" for a table, which remains
+  closely associated with the table. in most cases where want to output
+  multiple tables from the same tool we want to separate things with a title,
+  hence we might as well associate the title with the table itself, and
+  streamline a few things.
+
 - report: add filtering by metric prefix, so that we reports don't have to
   include everything, and we have a way to have "small" and "big" reports, that
   have different number of fields.

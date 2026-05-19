@@ -2500,7 +2500,7 @@ static int event_log_load_and_process(EventLog **ret) {
         return 0;
 }
 
-VERB(verb_show_log, "log", NULL, VERB_ANY, 1, VERB_DEFAULT,
+VERB_DEFAULT_NOARG(verb_show_log, "log",
      "Show measurement log");
 static int verb_show_log(int argc, char *argv[], uintptr_t _data, void *userdata) {
         _cleanup_(sd_json_variant_unrefp) sd_json_variant *log_table = NULL, *pcr_table = NULL;
@@ -5505,7 +5505,7 @@ static int run(int argc, char *argv[]) {
                 return EXIT_SUCCESS;
         }
 
-        return dispatch_verb_with_args(args, NULL);
+        return dispatch_verb(args, NULL);
 }
 
 DEFINE_MAIN_FUNCTION_WITH_POSITIVE_FAILURE(run);

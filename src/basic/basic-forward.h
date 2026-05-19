@@ -103,6 +103,7 @@ typedef enum Glyph Glyph;
 typedef enum ImageClass ImageClass;
 typedef enum JobMode JobMode;
 typedef enum RuntimeScope RuntimeScope;
+typedef enum StringSafeFlags StringSafeFlags;
 typedef enum TimestampStyle TimestampStyle;
 typedef enum UnitActiveState UnitActiveState;
 typedef enum UnitDependency UnitDependency;
@@ -153,3 +154,7 @@ typedef struct SocketAddress SocketAddress;
 
 /* MAX_ERRNO is defined as 4095 in linux/err.h. We use the same value here. */
 #define ERRNO_MAX               4095
+
+/* This is MAX_ADDR_LEN as defined in linux/netdevice.h, but net/if_arp.h
+ * defines a macro of the same name with a much lower size. */
+#define HW_ADDR_MAX_SIZE 32

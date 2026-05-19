@@ -147,8 +147,7 @@ static int print_status_info(StatusInfo *i) {
         return table_print_or_warn(table);
 }
 
-VERB(verb_show_status, "status", NULL, VERB_ANY, 1, VERB_DEFAULT,
-     "Show current locale settings");
+VERB_DEFAULT_NOARG(verb_show_status, "status", "Show current locale settings");
 static int verb_show_status(int argc, char *argv[], uintptr_t _data, void *userdata) {
         _cleanup_(status_info_clear) StatusInfo info = {};
         static const struct bus_properties_map map[]  = {
@@ -520,7 +519,7 @@ static int run(int argc, char *argv[]) {
         if (r < 0)
                 return bus_log_connect_error(r, arg_transport, RUNTIME_SCOPE_SYSTEM);
 
-        return dispatch_verb_with_args(args, bus);
+        return dispatch_verb(args, bus);
 }
 
 DEFINE_MAIN_FUNCTION(run);

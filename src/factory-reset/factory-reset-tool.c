@@ -99,7 +99,7 @@ static int parse_argv(int argc, char *argv[], char ***ret_args) {
         return 1;
 }
 
-VERB(verb_status, "status", NULL, VERB_ANY, 1, VERB_DEFAULT, "Report current factory reset status");
+VERB_DEFAULT_NOARG(verb_status, "status", "Report current factory reset status");
 static int verb_status(int argc, char *argv[], uintptr_t _data, void *userdata) {
         static const int exit_status_table[_FACTORY_RESET_MODE_MAX] = {
                 /* Report current mode also as via exit status, but only return a subset of states */
@@ -365,7 +365,7 @@ static int run(int argc, char *argv[]) {
         if (arg_varlink)
                 return varlink_service();
 
-        return dispatch_verb_with_args(args, /* userdata= */ NULL);
+        return dispatch_verb(args, /* userdata= */ NULL);
 }
 
 DEFINE_MAIN_FUNCTION_WITH_POSITIVE_FAILURE(run);

@@ -60,6 +60,8 @@ typedef struct {
         VERB_SCOPE(scope, d, v, /* a= */ NULL, /* amin= */ VERB_ANY, /* amax= */ 1, /* f= */ 0, h)
 #define VERB_NOARG(d, v, h)                                             \
         VERB_SCOPE_NOARG(static, d, v, h)
+#define VERB_DEFAULT_NOARG(d, v, h)                                     \
+        VERB_SCOPE(static, d, v, /* a= */ NULL, /* amin= */ VERB_ANY, /* amax= */ 1, /* f= */ VERB_DEFAULT, h)
 
 /* Magic entry in the table (which will not be returned) that designates the start of the group <gr>.
  * The macro works as a separator between groups and must be between other VERB* stanzas. */
@@ -77,11 +79,9 @@ bool should_bypass(const char *env_prefix);
 
 const Verb* verbs_find_verb(const char *name, const Verb verbs[], const Verb verbs_end[]);
 
-int _dispatch_verb_with_args(char **args, const Verb verbs[], const Verb verbs_end[], void *userdata);
-#define dispatch_verb_with_args(args, userdata) \
-        _dispatch_verb_with_args(args, ALIGN_PTR(__start_SYSTEMD_VERBS), __stop_SYSTEMD_VERBS, userdata)
-
-int dispatch_verb(int argc, char *argv[], const Verb verbs[], void *userdata);
+int _dispatch_verb(char **args, const Verb verbs[], const Verb verbs_end[], void *userdata);
+#define dispatch_verb(args, userdata) \
+        _dispatch_verb(args, __start_SYSTEMD_VERBS, __stop_SYSTEMD_VERBS, userdata)
 
 int _verbs_get_help_table(
                 const Verb verbs[],
@@ -89,7 +89,7 @@ int _verbs_get_help_table(
                 const char *group,
                 Table **ret);
 #define verbs_get_help_table_group(group, ret)                          \
-        _verbs_get_help_table(ALIGN_PTR(__start_SYSTEMD_VERBS), __stop_SYSTEMD_VERBS, group, ret)
+        _verbs_get_help_table(__start_SYSTEMD_VERBS, __stop_SYSTEMD_VERBS, group, ret)
 #define verbs_get_help_table(ret)                                       \
         verbs_get_help_table_group(/* group= */ NULL, ret)
 

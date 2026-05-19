@@ -23,6 +23,7 @@
 #include "alloc-util.h"
 #include "arphrd-util.h"
 #include "bitfield.h"
+#include "device-private.h"
 #include "device-util.h"
 #include "dns-domain.h"
 #include "errno-util.h"
@@ -66,7 +67,6 @@
 #include "networkd-wifi.h"
 #include "networkd-wwan-bus.h"
 #include "ordered-set.h"
-#include "parse-util.h"
 #include "set.h"
 #include "socket-util.h"
 #include "string-table.h"
@@ -288,7 +288,6 @@ static Link* link_free(Link *link) {
         free(link->previous_ssid);
         free(link->driver);
 
-        unlink_and_free(link->lease_file);
         unlink_and_free(link->state_file);
 
         sd_device_unref(link->dev);
@@ -1335,13 +1334,9 @@ static int link_get_network(Link *link, Network **ret) {
                         continue;
 
                 if (network->match.ifname && link->dev) {
-                        uint8_t name_assign_type = NET_NAME_UNKNOWN;
-                        const char *attr;
-
-                        if (sd_device_get_sysattr_value(link->dev, "name_assign_type", &attr) >= 0)
-                                (void) safe_atou8(attr, &name_assign_type);
-
-                        warn = name_assign_type == NET_NAME_ENUM;
+                        uint8_t name_assign_type;
+                        if (device_get_sysattr_u8(link->dev, "name_assign_type", &name_assign_type) >= 0)
+                                warn = name_assign_type == NET_NAME_ENUM;
                 }
 
                 log_link_full(link, warn ? LOG_WARNING : LOG_DEBUG,
@@ -2713,7 +2708,7 @@ static Link *link_drop_or_unref(Link *link) {
 DEFINE_TRIVIAL_CLEANUP_FUNC(Link*, link_drop_or_unref);
 
 static int link_new(Manager *manager, sd_netlink_message *message, Link **ret) {
-        _cleanup_free_ char *ifname = NULL, *kind = NULL, *state_file = NULL, *lease_file = NULL;
+        _cleanup_free_ char *ifname = NULL, *kind = NULL, *state_file = NULL;
         _cleanup_(link_drop_or_unrefp) Link *link = NULL;
         unsigned short iftype;
         int r, ifindex;
@@ -2751,9 +2746,6 @@ static int link_new(Manager *manager, sd_netlink_message *message, Link **ret) {
                 /* Do not update state files when running in test mode. */
                 if (asprintf(&state_file, "/run/systemd/netif/links/%d", ifindex) < 0)
                         return log_oom_debug();
-
-                if (asprintf(&lease_file, "/run/systemd/netif/leases/%d", ifindex) < 0)
-                        return log_oom_debug();
         }
 
         link = new(Link, 1);
@@ -2775,7 +2767,6 @@ static int link_new(Manager *manager, sd_netlink_message *message, Link **ret) {
                 .ipv6ll_address_gen_mode = _IPV6_LINK_LOCAL_ADDRESS_GEN_MODE_INVALID,
 
                 .state_file = TAKE_PTR(state_file),
-                .lease_file = TAKE_PTR(lease_file),
 
                 .n_dns = UINT_MAX,
                 .dns_default_route = -1,

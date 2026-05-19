@@ -545,7 +545,7 @@ static int get_hostname_based_on_flag(sd_bus *bus) {
         return get_one_name(bus, attr, NULL);
 }
 
-VERB(verb_show_status, "status", NULL, VERB_ANY, 1, VERB_DEFAULT, "Show current hostname settings");
+VERB_DEFAULT_NOARG(verb_show_status, "status", "Show current hostname settings");
 static int verb_show_status(int argc, char *argv[], uintptr_t _data, void *userdata) {
         sd_bus *bus = userdata;
         int r;
@@ -833,7 +833,7 @@ static int run(int argc, char *argv[]) {
         if (r < 0)
                 return bus_log_connect_error(r, arg_transport, RUNTIME_SCOPE_SYSTEM);
 
-        return dispatch_verb_with_args(args, bus);
+        return dispatch_verb(args, bus);
 }
 
 DEFINE_MAIN_FUNCTION(run);

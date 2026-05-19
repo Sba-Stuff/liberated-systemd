@@ -833,7 +833,7 @@ static int verb_export_raw(int argc, char *argv[], uintptr_t _data, void *userda
         return transfer_image_common(bus, m);
 }
 
-VERB(verb_list_transfers, "list-transfers", NULL, VERB_ANY, 1, VERB_DEFAULT, "Show list of transfers in progress");
+VERB_DEFAULT_NOARG(verb_list_transfers, "list-transfers", "Show list of transfers in progress");
 static int verb_list_transfers(int argc, char *argv[], uintptr_t _data, void *userdata) {
         _cleanup_(sd_bus_error_free) sd_bus_error error = SD_BUS_ERROR_NULL;
         _cleanup_(sd_bus_message_unrefp) sd_bus_message *reply = NULL;
@@ -1260,7 +1260,7 @@ static int run(int argc, char *argv[]) {
 
         (void) sd_bus_set_allow_interactive_authorization(bus, arg_ask_password);
 
-        return dispatch_verb_with_args(args, bus);
+        return dispatch_verb(args, bus);
 }
 
 DEFINE_MAIN_FUNCTION(run);
