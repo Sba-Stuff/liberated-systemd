@@ -17,8 +17,6 @@
 #include "strv.h"
 
 #if HAVE_LIBCRYPTSETUP
-static void *cryptsetup_dl = NULL;
-
 DLSYM_PROTOTYPE(crypt_activate_by_passphrase) = NULL;
 DLSYM_PROTOTYPE(crypt_activate_by_signed_key) = NULL;
 DLSYM_PROTOTYPE(crypt_activate_by_token_pin) = NULL;
@@ -45,6 +43,7 @@ DLSYM_PROTOTYPE(crypt_keyslot_destroy) = NULL;
 DLSYM_PROTOTYPE(crypt_keyslot_max) = NULL;
 DLSYM_PROTOTYPE(crypt_keyslot_status) = NULL;
 DLSYM_PROTOTYPE(crypt_load) = NULL;
+DLSYM_PROTOTYPE(crypt_logf) = NULL;
 DLSYM_PROTOTYPE(crypt_metadata_locking) = NULL;
 DLSYM_PROTOTYPE(crypt_persistent_flags_get) = NULL;
 DLSYM_PROTOTYPE(crypt_persistent_flags_set) = NULL;
@@ -274,6 +273,7 @@ int cryptsetup_get_volume_key_id(
 
 int dlopen_cryptsetup(int log_level) {
 #if HAVE_LIBCRYPTSETUP
+        static void *cryptsetup_dl = NULL;
         int r;
 
         /* libcryptsetup added crypt_reencrypt() in 2.2.0, and marked it obsolete in 2.4.0, replacing it with
@@ -315,6 +315,7 @@ int dlopen_cryptsetup(int log_level) {
                         DLSYM_ARG(crypt_keyslot_max),
                         DLSYM_ARG(crypt_keyslot_status),
                         DLSYM_ARG(crypt_load),
+                        DLSYM_ARG(crypt_logf),
                         DLSYM_ARG(crypt_metadata_locking),
                         DLSYM_ARG(crypt_persistent_flags_get),
                         DLSYM_ARG(crypt_persistent_flags_set),
