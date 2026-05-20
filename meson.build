@@ -425,6 +425,11 @@ possible_common_cc_flags = [
         '-fstack-protector',
         '-fstack-protector-strong',
         '-fstrict-flex-arrays=3',
+        # We don't read errno from any libm call, and the math-errno fallback
+        # forces a DT_NEEDED on libm via the cold error path even when the hot
+        # path is a single hardware instruction (sqrtsd, etc.). Drop it so the
+        # builtins lower to pure hardware instructions.
+        '-fno-math-errno',
         '--param=ssp-buffer-size=4',
 ]
 
@@ -496,6 +501,12 @@ possible_cc_flags = [
 
 if get_option('mode') == 'developer'
         possible_cc_flags += '-fno-omit-frame-pointer'
+        # Let -Wl,--gc-sections drop unused functions/data instead of whole
+        # .o files; biggest win on statically-linked NSS/PAM modules.
+        possible_cc_flags += ['-ffunction-sections', '-fdata-sections']
+        # Compress and dedupe DWARF; transparent to GDB / readelf.
+        possible_cc_flags += ['-gz=zstd', '-fdebug-types-section']
+        possible_link_flags += '-Wl,--compress-debug-sections=zstd'
 endif
 
 add_project_arguments(
@@ -2267,6 +2278,7 @@ test_dlopen = executables_by_name.get('test-dlopen')
 
 nss_targets = []
 pam_targets = []
+module_targets = []
 foreach dict : modules
         name = dict.get('name')
         is_nss = name.startswith('nss_')
@@ -2310,6 +2322,8 @@ foreach dict : modules
                 kwargs : kwargs,
                 implicit_include_directories : false,
         )
+
+        module_targets += lib
 
         if is_nss
                 # We cannot use shared_module because it does not support version suffix.
