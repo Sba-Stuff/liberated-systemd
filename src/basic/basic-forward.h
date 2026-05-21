@@ -17,7 +17,8 @@
 #include "assert-util.h"                /* IWYU pragma: export */
 #include "cleanup-util.h"               /* IWYU pragma: export */
 #include "macro.h"                      /* IWYU pragma: export */
-#include "string-table-fundamental.h"   /* IWYU pragma: export */
+
+#include "../fundamental/string-table.h"   /* IWYU pragma: export */
 
 /* Generic types */
 
@@ -111,10 +112,13 @@ typedef enum UnitNameMangle UnitNameMangle;
 typedef enum UnitType UnitType;
 typedef enum WaitFlags WaitFlags;
 
+typedef struct Fiber Fiber;
+typedef struct FiberOps FiberOps;
 typedef struct Hashmap Hashmap;
 typedef struct HashmapBase HashmapBase;
 typedef struct IteratedCache IteratedCache;
 typedef struct Iterator Iterator;
+typedef struct LogContext LogContext;
 typedef struct OrderedHashmap OrderedHashmap;
 typedef struct OrderedSet OrderedSet;
 typedef struct Set Set;

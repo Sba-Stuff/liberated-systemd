@@ -73,6 +73,30 @@ CHANGES WITH 261 in spe:
           effectively means live upgrades from versions older than v247 are not
           supported anymore.
 
+        * systemd-networkd gained a new sd-dhcp-relay backend for DHCP relay
+          agent support. As part of this change, the following [DHCPServer]
+          settings are deprecated:
+          - BindToInterface=
+          - RelayTarget=
+          - RelayAgentCircuitId=
+          - RelayAgentRemoteId=
+          They are replaced by DHCPRelay= in [Network], along with new
+          [DHCPRelay] section settings in .network files:
+          - AgentAddress=
+          - GatewayAddress=
+          - CircuitId=
+          - VirtualSubnetSelection=
+          - ExtraOption=
+          - InterfacePriority=
+          and in networkd.conf:
+          - ServerAddress=
+          - OverrideServerIdentifier=
+          - RemoteId=
+          - ExtraOption=
+
+        * Required version of musl (when built with -Dlibc=musl) has been raised
+          from 1.2.5 to 1.2.6.
+
         Changes in the system and service manager:
 
         * PID1 now supports the kernel's Live Update Orchestration (LUO) /
@@ -141,6 +165,10 @@ CHANGES WITH 261 in spe:
           the system is shut down more quickly than the specified time a delay
           is inserted in the last part of shutdown, in order to avoid tight
           boot loops.
+
+        * The FileDescriptorStorePreserve= unit setting can now take a new option
+          'on-success', which preserves the FD Store when the unit is stopped,
+          but only if it exited successfully, and discards it otherwise.
 
         New IMDS (Cloud "Instance Metadata Service") Subsystem:
 

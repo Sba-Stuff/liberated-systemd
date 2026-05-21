@@ -35,6 +35,7 @@ static bool arg_legend = true;
 static bool arg_reboot = false;
 static bool arg_offline = false;
 static bool arg_now = false;
+static bool arg_ask_password = true;
 static BusTransport arg_transport = BUS_TRANSPORT_LOCAL;
 static const char *arg_host = NULL;
 
@@ -1723,6 +1724,10 @@ static int parse_argv(int argc, char *argv[], char ***ret_args) {
 
                 OPTION_GROUP("Verbs"): {}
 
+                OPTION_COMMON_NO_ASK_PASSWORD:
+                        arg_ask_password = false;
+                        break;
+
                 OPTION_COMMON_HELP:
                         return help();
 
@@ -1752,10 +1757,9 @@ static int run(int argc, char *argv[]) {
         if (r < 0)
                 return bus_log_connect_error(r, arg_transport, RUNTIME_SCOPE_SYSTEM);
 
-        if (arg_transport == BUS_TRANSPORT_LOCAL)
-                polkit_agent_open();
+        (void) polkit_agent_open_if_enabled(arg_transport, arg_ask_password);
 
-        (void) sd_bus_set_allow_interactive_authorization(bus, true);
+        (void) sd_bus_set_allow_interactive_authorization(bus, arg_ask_password);
 
         return dispatch_verb(args, bus);
 }

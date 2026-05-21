@@ -43,6 +43,7 @@ systemd_networkd_extract_sources = files(
         'networkd-conf.c',
         'networkd-dhcp-common.c',
         'networkd-dhcp-prefix-delegation.c',
+        'networkd-dhcp-relay.c',
         'networkd-dhcp-server-bus.c',
         'networkd-dhcp-server-static-lease.c',
         'networkd-dhcp-server.c',
@@ -169,7 +170,7 @@ else
                               libshared_static]
 endif
 
-network_includes = [libsystemd_network_includes, include_directories(['.', 'netdev', 'tc'])]
+network_includes = [include_directories(['.', 'netdev', 'tc']), libsystemd_network_includes]
 
 network_test_template = test_template + {
         'conditions' : ['ENABLE_NETWORKD'],

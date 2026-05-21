@@ -1174,6 +1174,10 @@ def networkctl_reload():
     networkctl('reload')
 
 
+def networkctl_dhcp_lease(*args):
+    return networkctl('dhcp-lease', *args)
+
+
 def resolvectl(*args):
     return check_output(*(resolvectl_cmd + list(args)), env=env)
 
@@ -1210,7 +1214,6 @@ def tear_down_common():
     stop_dnsmasq()
     stop_isc_dhcpd()
     stop_radvd()
-    stop_modem_manager_mock()
 
     # 2. remove modules
     call_quiet('rmmod netdevsim')
@@ -1219,6 +1222,7 @@ def tear_down_common():
     # 3. remove network namespace
     call_quiet('ip netns del ns99')
     call_quiet('ip netns del ns-bridge')
+    call_quiet('ip netns del ns-relay')
     call_quiet('ip netns del ns-server')
 
     # 4. remove links
@@ -7589,14 +7593,35 @@ class NetworkdRATests(unittest.TestCase, Utilities):
             timeout_sec=10,
         )
 
+        print('### before sending NA without router flag')
+        output = check_output('ip -6 route show dev veth99')
+        print(output)
+        self.assertIn('2002:da8:1::/64 proto ra', output)
+        self.assertIn('2002:da8:2::/64 proto ra', output)
+        self.assertRegex(output, 'default .* proto ra')
+        self.assertRegex(output, '2002:da8:1:1:1a:2b:3c:4d .* proto redirect')
+        self.assertRegex(output, '2002:da8:1:2:1a:2b:3c:4d .* proto redirect')
+        self.assertIn('2002:da8:1:3:1a:2b:3c:4d proto redirect', output)
+
         # Send Neighbor Advertisement without the router flag to announce the default router is not available
         # anymore. Then, verify that all redirect routes and the default route are dropped.
         output = check_output('ip -6 address show dev veth-peer scope link')
         veth_peer_ipv6ll = re.search('fe80:[:0-9a-f]*', output).group()
         print(f'veth-peer IPv6LL address: {veth_peer_ipv6ll}')
         check_output(f'{test_ndisc_send} --interface veth-peer --type neighbor-advertisement --target-address {veth_peer_ipv6ll} --is-router no')  # fmt: skip
-        self.wait_route_dropped('veth99', 'proto ra', ipv='-6', timeout_sec=10)
+        self.wait_route_dropped('veth99', 'default .* proto ra', ipv='-6', timeout_sec=10)
         self.wait_route_dropped('veth99', 'proto redirect', ipv='-6', timeout_sec=10)
+
+        # Check if the non-default routes are unchanged, and others are actually dropped.
+        print('### after sending NA without router flag')
+        output = check_output('ip -6 route show dev veth99')
+        print(output)
+        self.assertIn('2002:da8:1::/64 proto ra', output)
+        self.assertIn('2002:da8:2::/64 proto ra', output)
+        self.assertNotRegex(output, 'default .* proto ra')
+        self.assertNotRegex(output, '2002:da8:1:1:1a:2b:3c:4d .* proto redirect')
+        self.assertNotRegex(output, '2002:da8:1:2:1a:2b:3c:4d .* proto redirect')
+        self.assertNotIn('2002:da8:1:3:1a:2b:3c:4d proto redirect', output)
 
         # Check if sd-radv refuses RS from the same interface.
         # See https://github.com/systemd/systemd/pull/32267#discussion_r1566721306
@@ -8153,7 +8178,7 @@ class NetworkdDHCPServerTests(unittest.TestCase, Utilities):
         self.wait_online('veth-peer:routable')
 
         for _ in range(10):
-            output = check_output(*networkctl_cmd, '-n', '0', 'status', 'veth-peer', env=env)
+            output = networkctl_status('veth-peer')
             if 'Offered DHCP leases: 192.168.5.' in output:
                 break
             time.sleep(0.2)
@@ -8360,11 +8385,22 @@ class NetworkdDHCPServerRelayAgentTests(unittest.TestCase, Utilities):
         tear_down_common()
 
     def test_relay_agent(self):
+        check_output('ip netns add ns-server')
+        check_output('ip link add server type veth peer server-peer')
+        check_output('ip link set server netns ns-server')
+        check_output('ip netns exec ns-server ip link set server up')
+        check_output('ip netns exec ns-server ip address add 192.0.2.1/24 dev server')
+
+        start_dnsmasq(
+            namespace='ns-server',
+            interface='server',
+            ipv4_range='198.51.100.100,198.51.100.109',
+            ipv4_router='198.51.100.10',
+        )
+
         copy_network_unit(
             '25-agent-veth-client.netdev',
-            '25-agent-veth-server.netdev',
             '25-agent-client.network',
-            '25-agent-server.network',
             '25-agent-client-peer.network',
             '25-agent-server-peer.network',
         )
@@ -8374,7 +8410,7 @@ class NetworkdDHCPServerRelayAgentTests(unittest.TestCase, Utilities):
 
         output = networkctl_status('client')
         print(output)
-        self.assertRegex(output, r'Address: 192.168.5.150 \(DHCPv4 via 192.168.5.1\)')
+        self.assertRegex(output, r'Address: 198\.51\.100\.10[0-9] \(DHCPv4 via 192\.0\.2\.1\)')
 
     def test_relay_agent_on_bridge(self):
         copy_network_unit(
@@ -8388,7 +8424,116 @@ class NetworkdDHCPServerRelayAgentTests(unittest.TestCase, Utilities):
         self.wait_online('bridge-relay:routable', 'client-peer:enslaved')
 
         # For issue #30763.
-        self.check_networkd_log('bridge-relay: DHCPv4 server: STARTED')
+        self.check_networkd_log('bridge-relay: Relaying DHCPv4 messages')
+
+    def test_sd_dhcp_relay(self):
+        check_output('ip netns add ns-relay')
+        check_output('ip netns add ns-server')
+
+        check_output('ip link add relay-down type veth peer client')
+        check_output('ip link set relay-down netns ns-relay')
+        check_output('ip netns exec ns-relay ip link set relay-down up')
+
+        check_output('ip link add relay-up type veth peer server')
+        check_output('ip link set relay-up netns ns-relay')
+        check_output('ip netns exec ns-relay ip link set relay-up up')
+
+        check_output('ip link set server netns ns-server')
+        check_output('ip netns exec ns-server ip link set server up')
+        check_output('ip netns exec ns-server ip address add 192.0.2.1/24 dev server')
+
+        with tempfile.TemporaryDirectory() as tmp:
+            conf_dir = pathlib.Path(tmp) / 'run/systemd/networkd.conf.d'
+            unit_dir = pathlib.Path(tmp) / 'run/systemd/network'
+            netif_dir = pathlib.Path(tmp) / 'run/systemd/netif'
+            mkdir_p(conf_dir)
+            mkdir_p(unit_dir)
+            mkdir_p(netif_dir)
+
+            # Do not use shutil.chown(), as it fails when running with sanitizers.
+            check_output(f'chown systemd-network:systemd-network {netif_dir}')
+
+            cp(pathlib.Path(networkd_ci_temp_dir) / '25-dhcp-relay.conf', conf_dir)
+            cp(pathlib.Path(networkd_ci_temp_dir) / '25-dhcp-relay-downstream.network', unit_dir)
+            cp(pathlib.Path(networkd_ci_temp_dir) / '25-dhcp-relay-upstream.network', unit_dir)
+
+            cmd = [
+                'systemd-run',
+                '--unit=networkd-test-dhcp-relay.service',
+                '--service-type=notify-reload',
+                '-p', 'User=systemd-network',
+                '-p', 'FileDescriptorStoreMax=512',
+                '-p', 'AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_BROADCAST CAP_NET_RAW CAP_BPF CAP_SYS_ADMIN',
+                '-p', 'CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_BROADCAST CAP_NET_RAW CAP_BPF CAP_SYS_ADMIN',
+                '-p', f'BindPaths={conf_dir}:/run/systemd/networkd.conf.d',
+                '-p', f'BindPaths={unit_dir}:/run/systemd/network',
+                '-p', f'BindPaths={netif_dir}:/run/systemd/netif',
+                '-p', 'TemporaryFileSystem=/run/dbus',
+                '-p', 'TemporaryFileSystem=/run/systemd/report',
+                '-p', 'TemporaryFileSystem=/run/systemd/resolve.hook',
+                '-p', 'TemporaryFileSystem=/var/lib/systemd/network',
+                '-p', 'TemporaryFileSystem=/etc/systemd/network',
+                '-p', 'TemporaryFileSystem=/usr/lib/systemd/network',
+                '-p', 'ReadOnlyPaths=/sys',
+                '-p', 'NetworkNamespacePath=/run/netns/ns-relay',
+            ]  # fmt: skip
+            if enable_debug:
+                cmd += ['-p', 'Environment=SYSTEMD_LOG_LEVEL=debug']
+            if asan_options:
+                cmd += ['-p', f'Environment=ASAN_OPTIONS={asan_options}']
+            if lsan_options:
+                cmd += ['-p', f'Environment=LSAN_OPTIONS={lsan_options}']
+            if ubsan_options:
+                cmd += ['-p', f'Environment=UBSAN_OPTIONS={ubsan_options}']
+            if asan_options or lsan_options or ubsan_options:
+                cmd += ['-p', 'TimeoutStopFailureMode=abort']
+
+            cmd += [networkd_bin]
+
+            try:
+                check_output(*cmd)
+
+                start_dnsmasq(
+                    namespace='ns-server',
+                    interface='server',
+                    ipv4_range='198.51.100.100,198.51.100.109',
+                    ipv4_router='198.51.100.10',
+                )
+
+                copy_network_unit('25-dhcp-client-simple.network')
+                start_networkd()
+                self.wait_online('client:routable')
+
+                print('## ip -4 address show dev client scope global')
+                output = check_output('ip -4 address show dev client scope global')
+                print(output)
+                self.assertRegex(output, r'198\.51\.100\.10[0-9]/24')
+
+                print('## ip -4 route show dev client')
+                output = check_output('ip -4 route show dev client')
+                print(output)
+                # fmt: off
+                self.assertRegex(output, r'default via 198\.51\.100\.10 proto dhcp src 198\.51\.100\.10[0-9]')
+                self.assertRegex(output, r'198\.51\.100\.0/24 proto kernel scope link src 198\.51\.100\.10[0-9]')
+                self.assertRegex(output, r'198\.51\.100\.10 proto dhcp scope link src 198\.51\.100\.10[0-9]')
+                # fmt: on
+
+                print('## dnsmasq log')
+                output = read_dnsmasq_log_file()
+                print(output)
+                # The option 82 is logged as agent-info since dnsmasq-2.92, otherwise logged as agent-id.
+                self.assertRegex(output, r'option: 82 (agent-id|agent-info)')
+
+                print('## journal of networkd-test-dhcp-relay.service')
+                check_output('journalctl --sync')
+                output = check_output('journalctl --no-hostname --output=short-monotonic --unit=networkd-test-dhcp-relay.service -I')  # fmt: skip
+                self.assertIn('relay-down: DHCPv4 relay: Received BOOTREQUEST', output)
+                self.assertIn('relay-up: DHCPv4 relay: Forwarded BOOTREQUEST', output)
+                self.assertIn('relay-up: DHCPv4 relay: Received BOOTREPLY', output)
+                self.assertIn('relay-down: DHCPv4 relay: Forwarded BOOTREPLY', output)
+            finally:
+                call_quiet('systemctl stop networkd-test-dhcp-relay.service')
+                call_quiet('systemctl reset-failed networkd-test-dhcp-relay.service')
 
 
 class NetworkdDHCPClientTests(unittest.TestCase, Utilities):
@@ -8769,6 +8914,43 @@ class NetworkdDHCPClientTests(unittest.TestCase, Utilities):
         self.assertIn('client provides name: test-hostname', output)
         self.assertIn('26:mtu', output)
 
+        print('### networkctl dhcp-lease')
+        output = networkctl_dhcp_lease('veth99')
+        print(output)
+        # header
+        self.assertIn('Hardware Type: ETHER', output)
+        self.assertIn('Hardware Address: 12:34:56:78:9a:bc', output)
+        self.assertIn(f'Client Address: {address1}', output)
+        self.assertIn('Server Address: 192.168.5.1', output)
+        # options
+        self.assertRegex(output, r'1 subnet mask *255\.255\.255\.0')
+        self.assertRegex(output, r'3 router *192\.168\.5\.1')
+        self.assertRegex(output, r'6 domain name server *192\.168\.5\.6\n *192\.168\.5\.7')
+        self.assertRegex(output, r'26 MTU size *1492')
+        self.assertRegex(output, r'28 broadcast address *192\.168\.5\.255')
+        self.assertRegex(output, r'51 lease time *2min')
+        self.assertRegex(output, r'53 message type *5')
+        self.assertRegex(output, r'54 server identifier *192\.168\.5\.1')
+        self.assertRegex(output, r'119 domain search *example\.com')
+        self.assertRegex(output, r'120 SIP server *192\.168\.5\.21\n *192\.168\.5\.22')
+        # extra arguments
+        output = networkctl_dhcp_lease('veth99', '1')
+        print(output)
+        self.assertRegex(output, r'1 subnet mask *255\.255\.255\.0')
+        output = networkctl_dhcp_lease('veth99', '1:auto')
+        print(output)
+        self.assertRegex(output, r'1 subnet mask *255\.255\.255\.0')
+        output = networkctl_dhcp_lease('veth99', '1:hex')
+        print(output)
+        self.assertRegex(output, 'CODE *NAME *DATA')
+        self.assertRegex(output, r'1 subnet mask *ff:ff:ff:00')
+        output = networkctl_dhcp_lease('veth99', '1:hex', '--no-legend')
+        print(output)
+        self.assertNotIn('CODE', output)
+        self.assertNotIn('NAME', output)
+        self.assertNotIn('DATA', output)
+        self.assertRegex(output, r'1 subnet mask *ff:ff:ff:00')
+
         # change address range, DNS servers, and Domains
         stop_dnsmasq()
         start_dnsmasq(
@@ -8877,6 +9059,26 @@ class NetworkdDHCPClientTests(unittest.TestCase, Utilities):
         self.assertIn(f'DHCPDISCOVER(veth-peer) {address1} 12:34:56:78:9a:bc', output)
         self.assertIn('client provides name: test-hostname', output)
         self.assertIn('26:mtu', output)
+
+        print('### networkctl dhcp-lease')
+        output = networkctl_dhcp_lease('veth99')
+        print(output)
+        # header
+        self.assertIn('Hardware Type: ETHER', output)
+        self.assertIn('Hardware Address: 12:34:56:78:9a:bc', output)
+        self.assertIn(f'Client Address: {address2}', output)
+        self.assertIn('Server Address: 192.168.5.1', output)
+        # options
+        self.assertRegex(output, r'1 subnet mask *255\.255\.255\.0')
+        self.assertRegex(output, r'3 router *192\.168\.5\.1')
+        self.assertRegex(output, r'6 domain name server *192\.168\.5\.1\n *192\.168\.5\.7\n *192\.168\.5\.8')
+        self.assertRegex(output, r'26 MTU size *1492')
+        self.assertRegex(output, r'28 broadcast address *192\.168\.5\.255')
+        self.assertRegex(output, r'51 lease time *2min')
+        self.assertRegex(output, r'53 message type *5')
+        self.assertRegex(output, r'54 server identifier *192\.168\.5\.1')
+        self.assertRegex(output, r'119 domain search *foo\.example\.com')
+        self.assertRegex(output, r'120 SIP server *192\.168\.5\.23\n *192\.168\.5\.24')
 
         self.check_netlabel('veth99', r'192\.168\.5\.0/24')
 
@@ -10884,6 +11086,7 @@ class NetworkdWWANTests(unittest.TestCase, Utilities):
         setup_common()
 
     def tearDown(self):
+        stop_modem_manager_mock()
         tear_down_common()
 
     def test_wwan_ipv4v6_static(self):
@@ -11035,7 +11238,7 @@ if __name__ == '__main__':
     if build_dir:
         test_ndisc_send = os.path.normpath(os.path.join(build_dir, 'test-ndisc-send'))
     else:
-        test_ndisc_send = '/usr/lib/tests/test-ndisc-send'
+        test_ndisc_send = '/usr/lib/systemd/tests/unit-tests/manual/test-ndisc-send'
 
     if build_dir:
         test_modem_manager_mock = os.path.normpath(os.path.join(build_dir, 'test-modem-manager-mock'))

@@ -384,6 +384,7 @@ static int prompt_block_device(sd_varlink **repart_link, char **ret_node) {
 
         r = prompt_loop("Please enter target disk device",
                         GLYPH_COMPUTER_DISK,
+                        /* prefill= */ NULL,
                         menu,
                         accepted,
                         /* ellipsize_percentage= */ 20,
@@ -540,6 +541,7 @@ static int prompt_erase(
                         "Please type 'keep' to install the OS in addition to what the disk already contains, or 'erase' to erase all data on the disk" :
                         "Please type 'erase' to confirm that all data on the disk shall be erased",
                         GLYPH_BROOM,
+                        /* prefill= */ NULL,
                         /* menu= */ l,
                         /* accepted= */ l,
                         /* ellipsize_percentage= */ 20,
@@ -578,6 +580,7 @@ static int prompt_touch_variables(void) {
         _cleanup_free_ char *reply = NULL;
         r = prompt_loop("Type 'yes' to register OS installation in firmware variables of the local system, 'no' otherwise",
                         GLYPH_ROCKET,
+                        /* prefill= */ "yes",
                         /* menu= */ l,
                         /* accepted= */ l,
                         /* ellipsize_percentage= */ 20,
@@ -616,6 +619,7 @@ static int prompt_confirm(void) {
         r = prompt_loop(arg_summary ? "Please type 'yes' to confirm the choices above and begin the installation" :
                                       "Please type 'yes' to begin the installation",
                         GLYPH_WARNING_SIGN,
+                        /* prefill= */ NULL,
                         /* menu= */ l,
                         /* accepted= */ l,
                         /* ellipsize_percentage= */ 20,
@@ -1245,6 +1249,15 @@ static int settle_definitions(void) {
         return 0;
 }
 
+static void end_marker(void) {
+
+        if (!arg_welcome)
+                return;
+
+        printf("\n%sExiting first boot settings tool.%s\n\n", ansi_grey(), ansi_normal());
+        fflush(stdout);
+}
+
 static int run(int argc, char *argv[]) {
         int r;
 
@@ -1271,6 +1284,7 @@ static int run(int argc, char *argv[]) {
                         chrome_show("Operating System Installer", /* bottom= */ NULL);
         }
 
+        DEFER_VOID_CALL(end_marker);
         DEFER_VOID_CALL(chrome_hide);
 
         _cleanup_(sd_varlink_flush_close_unrefp) sd_varlink *repart_link = NULL;
