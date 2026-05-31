@@ -217,13 +217,15 @@ static int enumerate_binaries(
                         return log_oom();
                 LOG_SET_PREFIX(filename);
 
-                fd = openat(dirfd(d), de->d_name, O_RDONLY|O_CLOEXEC);
+                fd = RET_NERRNO(openat(dirfd(d), de->d_name, O_RDONLY|O_CLOEXEC));
+                if (fd == -ENOENT)
+                        continue;
                 if (fd < 0)
-                        return log_error_errno(errno, "Failed to open file for reading: %m");
+                        return log_error_errno(fd, "Failed to open file '%s' for reading: %m", de->d_name);
 
                 r = get_file_version(fd, &v);
                 if (r < 0 && r != -ESRCH)
-                        return r;
+                        return log_error_errno(r, "Failed to get file version of '%s': %m", de->d_name);
 
                 if (*previous) { /* Let's output the previous entry now, since now we know that there will be
                                   * one more, and can draw the tree glyph properly. */
@@ -237,7 +239,7 @@ static int enumerate_binaries(
                 /* Do not output this entry immediately, but store what should be printed in a state
                  * variable, because we only will know the tree glyph to print (branch or final edge) once we
                  * read one more entry */
-                if (r == -ESRCH) /* No systemd-owned file but still interesting to print */
+                if (r == -ESRCH) /* Not systemd-owned file but still interesting to print */
                         r = asprintf(previous, "%s%s/%s/%s/%s",
                                      ansi_grey(), esp_path, ansi_normal(), path, de->d_name);
                 else /* if (r >= 0) */
@@ -408,6 +410,7 @@ int verb_status(int argc, char *argv[], uintptr_t _data, void *userdata) {
                         { EFI_LOADER_FEATURE_TYPE1_UKI_URL,           "Support Type #1 uki-url field"           },
                         { EFI_LOADER_FEATURE_TPM2_ACTIVE_PCR_BANKS,   "Loader reports active TPM2 PCR banks"    },
                         { EFI_LOADER_FEATURE_KEYBOARD_LAYOUT,         "Loader reports firmware keyboard layout" },
+                        { EFI_LOADER_FEATURE_SMBIOS_MEASURED,         "Loader measures SMBIOS information"      },
                 };
                 static const struct {
                         uint64_t flag;
@@ -425,6 +428,7 @@ int verb_status(int argc, char *argv[], uintptr_t _data, void *userdata) {
                         { EFI_STUB_FEATURE_CMDLINE_SMBIOS,            "Pick up .cmdline from SMBIOS Type 11"                        },
                         { EFI_STUB_FEATURE_DEVICETREE_ADDONS,         "Pick up .dtb from addons"                                    },
                         { EFI_STUB_FEATURE_MULTI_PROFILE_UKI,         "Stub understands profile selector"                           },
+                        { EFI_STUB_FEATURE_SMBIOS_MEASURED,           "Stub measures SMBIOS information"                            },
                 };
                 _cleanup_free_ char *fw_type = NULL, *fw_info = NULL, *loader = NULL, *loader_path = NULL, *stub = NULL, *stub_path = NULL,
                         *current_entry = NULL, *oneshot_entry = NULL, *preferred_entry = NULL, *default_entry = NULL, *sysfail_entry = NULL,

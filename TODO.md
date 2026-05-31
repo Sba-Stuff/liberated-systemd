@@ -159,8 +159,6 @@ SPDX-License-Identifier: LGPL-2.1-or-later
 - sysupdate: add concept for enabling/disabling specific components explicitly,
   just like features.
 
-- machine-info: add a TAGS concept that can be used to categorize a machine
-
 - udev: add a MACHINE_TAGS field, that augments /etc/machine-info configured
   tags.
 
@@ -179,13 +177,6 @@ SPDX-License-Identifier: LGPL-2.1-or-later
 
 - pcrextend: we should measure something when we enter developer mode, by some
   definition of developer mode.
-
-- /etc/machine-info should have a concept of a "role" that we can put a machine
-  into, which can be consumed by sysupdate and similar. A role should be
-  something we can set once (i.e. the initial setting should be protected by
-  polkit and be somewhat loosely access control, and later settings should use a
-  different/tougher polkit authorization, so that people can implement a
-  no-way-back mechanism)
 
 - firstboot: optionally accept credentials at firstboot without authentication
 
@@ -788,11 +779,6 @@ SPDX-License-Identifier: LGPL-2.1-or-later
 - sysext: make systemd-{sys,conf}ext-sysroot.service work in the split `/var`
   configuration.
 
-- introduce a concept of /etc/machine-info "TAGS=" field that allows tagging
-  machines with zero, one or more roles, states or other forms of
-  categorization. Then, add a way of using this in sysupdate to automatically
-  enable certain transfers, one for each role.
-
 - sd-varlink: add fully async modes of the protocol upgrade stuff
 
 - repart: maybe remove iso9660/eltorito superblock from disk when booting via
@@ -1225,12 +1211,6 @@ SPDX-License-Identifier: LGPL-2.1-or-later
 
 - in pid1: include ExecStart= cmdlines (and other Exec*= cmdlines) in polkit
   request, so that policies can match against command lines.
-
-- in sd-boot and sd-stub measure the SMBIOS vendor strings to some PCR (at
-  least some subset of them that look like systemd stuff), because apparently
-  some firmware does not, but systemd honours it. avoid duplicate measurement
-  by sd-boot and sd-stub by adding LoaderFeatures/StubFeatures flag for this,
-  so that sd-stub can avoid it if sd-boot already did it.
 
 - in sd-id128: also parse UUIDs in RFC4122 URN syntax (i.e. chop off urn:uuid: prefix)
 
@@ -1757,10 +1737,6 @@ SPDX-License-Identifier: LGPL-2.1-or-later
 - maybe: in PID1, when we detect we run in an initrd, make superblock read-only
   early on, but provide opt-out via kernel cmdline.
 
-- measure all log-in attempts into a new nvpcr
-
-- measure credentials picked up from SMBIOS to some suitable PCR
-
 - measure GPT and LUKS headers somewhere when we use them (i.e. in
   systemd-gpt-auto-generator/systemd-repart and in systemd-cryptsetup?)
 
@@ -1923,8 +1899,6 @@ SPDX-License-Identifier: LGPL-2.1-or-later
   and use it for validating DDIs and credentials. Maybe upload it to the kernel
   keyring, so that the kernel does this validation for us for verity and kernel
   modules
-
-- on first login of a user, measure its identity to some nvpcr
 
 - on shutdown: move utmp, wall, audit logic all into PID 1 (or logind?)
 

@@ -91,6 +91,45 @@ must be employed when designing a system that uses this feature.
 
 ## PCR Measurements Made by `systemd-boot` (UEFI)
 
+### PCR 1, `EV_EVENT_TAG`, SMBIOS information
+
+Select SMBIOS structures provided by the firmware are measured into PCR 1 (the
+TCG-defined register for platform configuration data), one tagged event per
+structure:
+
+* SMBIOS type 1 (system information). The volatile "Wake-up Type" field is
+  zeroed before measuring, since it varies depending on how the machine was
+  powered on (cold boot, resume from sleep, AC restore, …) and would otherwise
+  make the measurement non-reproducible.
+* SMBIOS type 2 (baseboard information).
+* SMBIOS type 11 (OEM strings). There may be more than one such structure; all
+  are measured.
+
+Note that these measurements are – strictly speaking – redundant, since
+firmwares are supposed to measure SMBIOS data anyway on their own. However, it
+has been found this is not the case on many real-life implementations. Since in
+particular SMBIOS type 11 may carry highly relevant input for the OS
+(e.g. system credentials), an explicit measurement is made here to ensure all
+parameters for the OS are comprehensively measured even on flaky firmwares.
+
+→ **Event Tag** `0xd5cb7cbc` for type 1, `0xe0d47bc8` for type 2, `0xc0b3bd23`
+for type 11.
+
+→ **Description** in the event log record is `smbios:type1`, `smbios:type2` or
+`smbios:type11` respectively, in UTF-16.
+
+→ **Measured hash** covers the raw bytes of the SMBIOS structure (formatted area
+plus trailing string set), with the type 1 "Wake-up Type" field zeroed out as
+described above.
+
+This measurement is also performed by `systemd-stub` (see below), so that systems
+that boot a UKI directly, bypassing `systemd-boot`, still get it. Whichever
+component runs first performs the measurement and sets the volatile
+`LoaderPcrSMBIOS` EFI variable to the PCR index used; its presence suppresses a
+second measurement of the same data into the same PCR during the same boot. Note
+that the firmware itself typically also extends PCR 1, so its final value is not
+solely determined by this measurement.
+
 ### PCR 5, `EV_EVENT_TAG`, `loader.conf`
 
 The content of `systemd-boot`'s configuration file, `loader/loader.conf`, is
@@ -119,6 +158,14 @@ UTF-16.
 trailing NUL bytes).
 
 ## PCR Measurements Made by `systemd-stub` (UEFI)
+
+### PCR 1, `EV_EVENT_TAG`, SMBIOS information
+
+Identical to the SMBIOS measurement described above for `systemd-boot`. When
+`systemd-stub` is invoked by `systemd-boot`, the measurement has typically already
+been made (tracked via the `LoaderPcrSMBIOS` EFI variable) and is not repeated;
+when the UKI is booted directly by the firmware, `systemd-stub` performs it
+itself.
 
 ### PCR 11, `EV_IPL`, PE section name
 
@@ -274,6 +321,23 @@ root file system and `/var/` (if it is its own file system).
 colon-separated strings, identifying the file system type, UUID, label as well
 as the GPT partition entry UUID, entry type UUID and entry label (in UTF-8,
 without trailing NUL bytes).
+
+### NvPCR `login` (base+3), user logins
+
+The `systemd-pcrlogin@.service` service (a per-UID template unit started by
+`systemd-logind.service` on a user's first login of the current boot) will
+measure that user's record into the `login` NvPCR. Each user is measured exactly
+once per boot (the unit is `Type=oneshot`/`RemainAfterExit=yes` and is never
+stopped again), so the NvPCR forms an append-only record of which user
+identities were activated during the current boot. Note that its value is
+inherently dynamic: it depends on *which* users log in and *in which order*.
+
+→ **Measured hash** covers the string "login:", suffixed by the (escaped)
+user name, a colon, and the user's record reduced to its `regular`, `perMachine`
+and `binding` sections (i.e. with the `privileged`, `secret`, `status` and
+`signature` sections stripped), normalized and serialized to canonical,
+single-line JSON. Example string:
+`login:lennart:{"userName":"lennart","uid":1000,…}`.
 
 ### PCR 9, NvPCR initialization separator
 

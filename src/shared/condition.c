@@ -35,6 +35,7 @@
 #include "glob-util.h"
 #include "hmac.h"
 #include "hostname-setup.h"
+#include "hostname-util.h"
 #include "id128-util.h"
 #include "ima-util.h"
 #include "initrd-util.h"
@@ -316,6 +317,37 @@ static int condition_test_osrelease(Condition *c, char **env) {
         return true;
 }
 
+static int condition_test_machine_tag(Condition *c, char **env) {
+        int r;
+
+        assert(c);
+        assert(c->parameter);
+        assert(c->type == CONDITION_MACHINE_TAG);
+
+        _cleanup_free_ char *tags = NULL;
+        r = parse_env_file(
+                        /* f= */ NULL, etc_machine_info(),
+                        "TAGS", &tags);
+        if (r < 0 && r != -ENOENT) {
+                log_debug_errno(r, "Failed to read /etc/machine-info, ignoring: %m");
+                return false;
+        }
+
+        /* Silently ignore invalid tags, matching the Tags D-Bus property */
+        _cleanup_strv_free_ char **l = NULL;
+        r = machine_tags_from_string(tags, /* graceful= */ true, &l);
+        if (r < 0) {
+                log_debug_errno(r, "Failed to parse machine tags '%s', ignoring: %m", tags);
+                return false;
+        }
+
+        STRV_FOREACH(i, l)
+                if (fnmatch(c->parameter, *i, /* flags= */ 0) == 0)
+                        return true;
+
+        return false;
+}
+
 static int condition_test_memory(Condition *c, char **env) {
         CompareOperator operator;
         uint64_t m, k;
@@ -398,8 +430,7 @@ static int condition_test_user(Condition *c, char **env) {
         if (streq(username, c->parameter))
                 return 1;
 
-        const char *u = c->parameter;
-        r = get_user_creds(&u, &id, NULL, NULL, NULL, USER_CREDS_ALLOW_MISSING);
+        r = get_user_creds(c->parameter, USER_CREDS_ALLOW_MISSING, NULL, &id, NULL, NULL, NULL);
         if (r < 0)
                 return 0;
 
@@ -1344,6 +1375,7 @@ int condition_test(Condition *c, char **env) {
                 [CONDITION_ENVIRONMENT]              = condition_test_environment,
                 [CONDITION_CPU_FEATURE]              = condition_test_cpufeature,
                 [CONDITION_OS_RELEASE]               = condition_test_osrelease,
+                [CONDITION_MACHINE_TAG]              = condition_test_machine_tag,
                 [CONDITION_MEMORY_PRESSURE]          = condition_test_psi,
                 [CONDITION_CPU_PRESSURE]             = condition_test_psi,
                 [CONDITION_IO_PRESSURE]              = condition_test_psi,
@@ -1471,6 +1503,7 @@ static const char* const _condition_type_table[_CONDITION_TYPE_MAX] = {
         [CONDITION_ENVIRONMENT]              = "ConditionEnvironment",
         [CONDITION_CPU_FEATURE]              = "ConditionCPUFeature",
         [CONDITION_OS_RELEASE]               = "ConditionOSRelease",
+        [CONDITION_MACHINE_TAG]              = "ConditionMachineTag",
         [CONDITION_MEMORY_PRESSURE]          = "ConditionMemoryPressure",
         [CONDITION_CPU_PRESSURE]             = "ConditionCPUPressure",
         [CONDITION_IO_PRESSURE]              = "ConditionIOPressure",
@@ -1528,6 +1561,7 @@ static const char* const _assert_type_table[_CONDITION_TYPE_MAX] = {
         [CONDITION_ENVIRONMENT]              = "AssertEnvironment",
         [CONDITION_CPU_FEATURE]              = "AssertCPUFeature",
         [CONDITION_OS_RELEASE]               = "AssertOSRelease",
+        [CONDITION_MACHINE_TAG]              = "AssertMachineTag",
         [CONDITION_MEMORY_PRESSURE]          = "AssertMemoryPressure",
         [CONDITION_CPU_PRESSURE]             = "AssertCPUPressure",
         [CONDITION_IO_PRESSURE]              = "AssertIOPressure",

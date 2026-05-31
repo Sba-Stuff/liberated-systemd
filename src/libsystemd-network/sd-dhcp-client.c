@@ -24,9 +24,9 @@
 #include "random-util.h"
 #include "set.h"
 #include "socket-util.h"
-#include "string-table.h"
 #include "string-util.h"
 #include "time-util.h"
+#include "tlv-util.h"
 #include "web-util.h"
 
 #define MAX_MAC_ADDR_LEN CONST_MAX(INFINIBAND_ALEN, ETH_ALEN)
@@ -1351,7 +1351,7 @@ int sd_dhcp_client_attach_event(sd_dhcp_client *client, sd_event *event, int64_t
         else {
                 r = sd_event_default(&client->event);
                 if (r < 0)
-                        return 0;
+                        return r;
         }
 
         client->event_priority = priority;
@@ -1443,17 +1443,3 @@ int sd_dhcp_client_new(sd_dhcp_client **ret) {
 
         return 0;
 }
-
-static const char* const dhcp_state_table[_DHCP_STATE_MAX] = {
-        [DHCP_STATE_STOPPED]              = "stopped",
-        [DHCP_STATE_INIT]                 = "initialization",
-        [DHCP_STATE_SELECTING]            = "selecting",
-        [DHCP_STATE_INIT_REBOOT]          = "init-reboot",
-        [DHCP_STATE_REBOOTING]            = "rebooting",
-        [DHCP_STATE_REQUESTING]           = "requesting",
-        [DHCP_STATE_BOUND]                = "bound",
-        [DHCP_STATE_RENEWING]             = "renewing",
-        [DHCP_STATE_REBINDING]            = "rebinding",
-};
-
-DEFINE_STRING_TABLE_LOOKUP_TO_STRING(dhcp_state, DHCPState);

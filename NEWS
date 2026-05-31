@@ -17,6 +17,12 @@ CHANGES WITH 261 in spe:
           related interfaces, in order to simplify our codebase. Support for
           UAPI.1 is – of course – kept in place.
 
+        * The experimental "systemd-sysupdated" D-Bus API is going to be
+          removed in the next release. The plan is that in its place
+          clients should directly talk to systemd-sysupdate (i.e. the backend
+          of "systemd-sysupdated") via Varlink IPC. The "updatectl" tool will
+          be reworked along these lines.
+
         Feature Removals and Incompatible Changes:
 
         * systemd-nspawn's --user= option has been renamed to --uid=. The -u
@@ -51,12 +57,6 @@ CHANGES WITH 261 in spe:
           This is currently opt-in. In a future version, the default will be
           changed to restrict socket address families to AF_INET, AF_INET6 and
           AF_UNIX.
-
-        * The experimental "systemd-sysupdated" D-Bus API is going to be
-          removed in the next release. The plan is that in its place
-          clients should directly talk to systemd-sysupdate (i.e. the backend
-          of "systemd-sysupdated") via Varlink IPC. The "updatectl" tool will
-          be reworked along these lines.
 
         * A new service unit "systemd-pcrosseparator.service" will now measure
           a new separator measurement during early userspace into PCRs 0-7, 9,
@@ -96,6 +96,18 @@ CHANGES WITH 261 in spe:
 
         * Required version of musl (when built with -Dlibc=musl) has been raised
           from 1.2.5 to 1.2.6.
+
+        * libsystemd is no longer guaranteed to be linked against libm. Whether
+          the dependency is recorded depends on whether the compiler chooses to
+          emit builtins for all calls to libm symbols. Consumers that rely on
+          libsystemd transitively pulling in libm should link against it
+          themselves. There is at least one known case that is still unsolved:
+          rsyslog crashes on launch due to libfastjson using libm without linking
+          to it, which was previously masked because libsystemd linked to it. If
+          forcing a link against libm is required as a workaround,
+          '-Wl,--push-state,--no-as-needed,-lm,--pop-state' can be added to the
+          link flags, or passed to systemd's meson build options via
+          '-Dc_link_args=-Wl,--push-state,--no-as-needed,-lm,--pop-state'.
 
         Changes in the system and service manager:
 
@@ -170,6 +182,21 @@ CHANGES WITH 261 in spe:
           'on-success', which preserves the FD Store when the unit is stopped,
           but only if it exited successfully, and discards it otherwise.
 
+        * The service manager now implements a new Varlink interface
+          io.systemd.Job for listing/cancelling any queued jobs.
+
+        * A new knob ConditionFraction= enables scheduling of units on a
+          specified fraction of the fleet of systems only. It takes a "tag"
+          string and a percentage. The system's machine ID is hashed together
+          with the tag into a 32bit integer, and the result is compared with
+          the percentage of 2^32. If below, the condition is true, otherwise
+          false. This allows staged rollout of services: if multiple systems
+          are provisioned with the same units only roughly the specified
+          percentage of systems will run the service, the rest will not.
+
+        * A new knob ConditionMachineTag= allows conditioning a unit based on
+          per-mach "tag" strings, as configured in /etc/machine-info, see below.
+
         New IMDS (Cloud "Instance Metadata Service") Subsystem:
 
         * The hardware database now contains a new database hwdb.d/40-imds.hwdb
@@ -224,6 +251,16 @@ CHANGES WITH 261 in spe:
           secret" functionality for encryption, and stores its state in the
           disk's ESP. This provides at least some protection, and reasonable
           persistency from initrd on.
+
+        * systemd-boot and systemd-stub will now measure SMBIOS Type 1, Type 2
+          and Type 11 in PCR 1, since some firmwares do not measure them, even
+          though they are supposed to.
+
+        * systemd-tpm2-setup.service will now allocate NvPCRs in an orer
+          configurable via the "priority" field of their defining JSON object.
+          As NV index space is very constrained, it's essential to allocate them
+          in the order of relevance, so that the least relevant NvPCRs are
+          dropped, and the most relevant NvPCRs kept.
 
         Changes in systemd-tmpfiles and systemd-sysusers:
 
@@ -280,6 +317,8 @@ CHANGES WITH 261 in spe:
           (RFC 3361) to clients.
 
         * The Varlink Describe() output now reports interface bit rates.
+
+        * .link files gained knobs to control IRQ affinity.
 
         Changes in systemd-resolved:
 
@@ -356,10 +395,10 @@ CHANGES WITH 261 in spe:
         * systemd-stub will now query the firmware's keyboard mapping and pass
           it to the OS via the LoaderKeyboardLayout EFI variable. This variable
           is then used by systemd-vconsole-setup as a fallback keyboard mapping
-          if no mapping is explicitly configured otherwise. On modern laptops this
-          means there's a good chance that the keyboard mapping of the built-in
-          keyboard will be automatically detected and set up without requiring
-          user intervention.
+          if no mapping is explicitly configured otherwise. On modern laptops
+          this means there's a good chance that the keyboard mapping of the
+          built-in keyboard will be automatically detected and set up without
+          requiring user intervention.
 
         * A new "extra" Type #1 Boot Loader Specification stanza is parsed and
           used to deliver additional resources to a UKI without modifying its
@@ -392,6 +431,10 @@ CHANGES WITH 261 in spe:
           with confext DDIs, sysext DDIs or system credentials.
 
         * bootctl's 'unlink' verb is now also accessible via a Varlink API.
+
+        * bootctl now stores the existing systemd-boot binary as a fallback when
+          installing a new version, and installs a fallback UEFI boot entry, to
+          allow a system to recover from a non-working version being installed.
 
         Changes in systemd-repart:
 
@@ -492,14 +535,14 @@ CHANGES WITH 261 in spe:
         * systemd-vmspawn now uses the QEMU built-in vdagent (clipboard,
           resolution sync) instead of spicevmc.
 
-        * systemd-vmspawn gained a new --print-profiles command that falls
-          back to a non-JSON representation when the output is not JSON.
-
         * systemd-vmspawn's --grow-image now detects and rejects qcow2
           images, where the operation is not supported.
 
         * systemd-vmspawn now propagates the host TERM environment variable
           into the VM.
+
+        * systemd-vmspawn gained support for a new --coco= switch for enabling
+          Confidential Computing. Currently, it only supports AMD SEV-SNP.
 
         * A new 'storagectl' command line tool and an accompanying
           io.systemd.StorageProvider Varlink interface have been added,
@@ -529,6 +572,12 @@ CHANGES WITH 261 in spe:
         * The crashing thread's TID and name are now captured and
           recorded alongside the existing PID/comm metadata.
 
+        * systemd-coredump will now pick up a new field COREDUMP_CODE= for all
+          coredumps that happen. This is a field provided by kernel 7.1 that
+          contains details about the reason for the coredump, with various
+          details depending on the architecture. "coredumpctl info" has been
+          updated in order to be able to decode this new field.
+
         Changes in systemd-creds, systemd-cryptsetup and
         systemd-cryptenroll:
 
@@ -540,6 +589,12 @@ CHANGES WITH 261 in spe:
           binaries, eliminating the hard runtime dependency for systems that do
           not actually use it.
 
+        * systemd-cryptenroll now defaults to sealing the LUKS2 key using
+          RSA-OAEP with SHA-256 (or SHA-1 if the hardware doesn't support it),
+          in order to make the setup more robust against theoretical future
+          brute force attacks. Existing PKCS#1 v1.5 enrollment remain supported
+          by systemd-cryptsetup for backward compatibility.
+
         Changes in Dynamic Linking:
 
         * libgnutls, libmicrohttpd, libcurl, libcrypto, libssl, libfdisk
@@ -549,9 +604,29 @@ CHANGES WITH 261 in spe:
 
         * The unused dependency on libgpg-error has been dropped.
 
-        → This means all direct shared library linking against external
-          libraries has now been replaced by dlopen()-based linking, with the
-          sole exception of libc.
+        │ This means all direct shared library linking against external       │
+        │ libraries has now been replaced by dlopen()-based linking, with the │
+        │ sole exception of libc.                                             │
+
+        Changes related to Varlink:
+
+        * sd-varlink gained a new call sd_varlink_set_sentinel() that
+          simplifies generating responses to method calls that have "more" set.
+
+        * sd-varlink gained a new call sd_varlink_call_and_upgrade() that
+          permits calling a method call with the Varlink "upgrade" feature
+          enabled, i.e. that allows switching from Varlink to a different
+          protocol. varlinkctl acquired a new --upgrade switch to expose this
+          functionality. A new call sd_varlink_reply_and_upgrade() supports
+          "upgrade" mode on the server side.
+
+        * The 'ret' argument of sd_varlink_idl_parse() is now optional.
+
+        * sd-varlink's per-UID connection limit has been reduced to 128.
+
+        * varlinkctl gained a new 'serve' verb that wraps an arbitrary
+          command as a Varlink server, and a new '--upgrade' option
+          (along with '--exec') to consume the protocol upgrade API.
 
         Changes in libsystemd:
 
@@ -574,20 +649,6 @@ CHANGES WITH 261 in spe:
           file offset to 0 when parsing via sd_json_parse_file() or
           sd_json_parse_fd().
 
-        * sd-varlink gained a new call sd_varlink_set_sentinel() that
-          simplifies generating responses to method calls that have "more" set.
-
-        * sd-varlink gained a new call sd_varlink_call_and_upgrade() that
-          permits calling a method call with the Varlink "upgrade" feature
-          enabled, i.e. that allows switching from Varlink to a different
-          protocol. varlinkctl acquired a new --upgrade switch to expose this
-          functionality. A new call sd_varlink_reply_and_upgrade() supports
-          "upgrade" mode on the server side.
-
-        * The 'ret' argument of sd_varlink_idl_parse() is now optional.
-
-        * sd-varlink's per-UID connection limit has been reduced to 128.
-
         * sd-event gained native support for CPU and IO pressure events, in
           addition to the pre-existing support for memory pressure events. This
           is useful for slowing down or pausing worker threads or so if CPU or
@@ -595,25 +656,31 @@ CHANGES WITH 261 in spe:
 
         * sd-path now exposes the XDG 'projects' user directory.
 
-        Other changes:
+        Changes in systemd-hostnamed:
+
+        * systemd-hostnamed now provides a D-Bus API to acquire arbitrary
+          fields from /etc/machine-info.
+
+        * systemd-hostnamed is now available in early boot too (i.e. before
+          basic.target). Note that D-Bus only becomes available later, and it
+          can hence only be contacted via Varlink that early.
+
+        * systemd-hostnamed and /etc/machine-info now support a new Tags= key,
+          which can be used to tag a machine with an arbitrary set of strings.
+          Units can match on these tags via the new ConditionMachineTag= setting,
+          and systemd-firstboot can set the tags via command line parameters or
+          credentials.
+
+        Changes in systemd-logind:
+
+        * A new systemd-pcrlogin@.service service will now measure a minimized
+          user record into the new 'login' NvPCR upon first login.
 
         * A new io.systemd.Shutdown Varlink interface has been introduced
           to request system shutdown. The peer connection identifier of
           the requester is logged.
 
-        * varlinkctl gained a new 'serve' verb that wraps an arbitrary
-          command as a Varlink server, and a new '--upgrade' option
-          (along with '--exec') to consume the protocol upgrade API.
-
-        * The systemd-report framework introduced in v260 has been
-          substantially extended. Basic system metrics
-          (PhysicalMemoryBytes, CPUsOnline) are now provided by a new
-          systemd-report-basic@.service that is enabled by default via its
-          report-basic.socket activation unit. Per-cgroup metrics (CPU time,
-          etc.) and per-service metrics are exposed through dedicated Varlink
-          services. systemd-report gained the ability to upload collected
-          reports via a Varlink socket directory or HTTP destinations, and
-          to inject custom HTTP headers when doing so.
+        Changes related to kexec:
 
         * 'systemctl kexec' gained a new --kernel-cmdline= argument that
           overrides the kernel command line for kexec invocations.
@@ -623,7 +690,14 @@ CHANGES WITH 261 in spe:
           is not available, so that on most systems the dependency on
           'kexec-tools' is no longer necessary.
 
-        * fstab-generator now supports swap on network block devices.
+        Changes in systemd-firstboot:
+
+        * systemd-firstboot will now pre-fill the input prompts for keyboard
+          and local with the corresponding settings from the firmware if
+          supported. There's a good chance, this means on recent hardware you
+          can just keep hitting Enter in the prompts and will nonetheless get
+          the right keyboard mapping set up. bootctl will show this data too,
+          if available.
 
         * systemd-firstboot will now honour a new "firstboot.hostname" system
           credential for persistently setting the system hostname on first
@@ -631,12 +705,18 @@ CHANGES WITH 261 in spe:
           which sets the hostname only for the boot the credential is passed
           on, and which is not made persistent.
 
-        * systemd-hostnamed now provides a D-Bus API to acquire arbitrary
-          fields from /etc/machine-info.
+        Other changes:
 
-        * systemd-hostnamed is now available in early boot too (i.e. before
-          basic.target). Note that D-Bus only becomes available later, and it
-          can hence only be contacted via Varlink that early.
+        * The systemd-report framework introduced in v260 has been
+          substantially extended. Basic system metrics
+          (PhysicalMemoryBytes, CPUsOnline, SMBIOS fields, /etc/machine-info
+          fields, Confidential Computing vendor info, TPM2 vendor info) are
+          now provided by a new systemd-report-basic@.service that is enabled
+          by default via its report-basic.socket activation unit. Per-cgroup
+          metrics (CPU time, etc.) and per-service metrics are exposed through
+          dedicated Varlink services. systemd-report gained the ability to
+          upload collected reports via a Varlink socket directory or HTTP
+          destinations, and to inject custom HTTP headers when doing so.
 
         * JSON user database records may now optionally carry a birth date
           field to close the gap with LDAP/OpenID/FreeIPA/etc. homectl gained
@@ -666,6 +746,50 @@ CHANGES WITH 261 in spe:
         * systemd-oomd gained support for OOM rulesets. These allow fine-tuning
           OOM policy handling, and may be defined in /etc/systemd/oomd/rules.d/
           and then enabled on a service unit via the new OOMRule= option.
+
+        * systemd-socket-proxy now optionally implements the "PROXY protocol
+          v1", as defined by "haproxy". See the new --proxy-protocol= switch
+          for details.
+
+        Contributions from: A S Alam, Adam Dinwoodie, Adrian Wannenmacher,
+        Aleksa Sarai, Ali Ciloglu, Alyssa Ross, Ambareesh Balaji,
+        Américo Monteiro, Andreas K. Hüttel, Antonio Alvarez Feijoo,
+        Arif Budiman, Aritra Basu, Arnout Engelen, Artem Proskurnev,
+        Balázs Meskó, Bone NI, Bret Comnes, Chris Down, Chris Hofer,
+        Chris Mason, Christian Brauner, Christian Goeschel Ndjomouo,
+        Christian Hesse, Claude Opus 4.6, Clayton Craft, Cynthia,
+        Daan De Meyer, Dan Anderson, Dark Cronyx,
+        David Santamaría Rogado, David Tardon, Diego Viola, Dirga Yuza,
+        Dmitry Konishchev, Duncan Overbruck, Dylan M. Taylor,
+        Emanuele Rocca, Fco. Javier F. Serrador, Felix Pehla, Franck Bui,
+        Frantisek Sumsal, Hadi Chokr, Heran Yang, Ivan Kruglov,
+        Ivan Shapovalov, Jan Kuparinen, Jim Spentzos, Jiri Pirko,
+        Jonas Dreßler, Jonas Rebmann, Jonathan Davies,
+        José Miguel Sarasola, João Taveira Araújo, Julian Sparber,
+        Jörg Behrmann, Kai Lüke, Kajus Naujokaitis, Kit Dallege,
+        Lennart Poettering, LevitatingBusinessMan (Rein Fernhout),
+        Luan Vitor Simião Oliveira, Luan Vitor Simião oliveira,
+        Luca Boccassi, Luna Jernberg, Marek Adamski, Massii Aqvayli,
+        Matheus Afonso Martins Moreira, Matteo Croce, Max Chernoff,
+        Michael Ferrari, Michael Vogt, Michal Rybecky, Michal Sekletár,
+        Mike Yuan, Mikhail Nogin, Milan Kyselica, Morten Linderud,
+        Nandakumar Raghavan, Nick Rosbrook, Nikolas Kyx, Nita Vesa,
+        Oblivionsage, Oğuz Ersen, Patrick Rohr, Patrick Wicki, Paul Meyer,
+        Pavel Borecki, Petru Rebeja, Philip Withnall, Quentin Deslandes,
+        Rafael Fontenelle, RiskoZS, Robin Ebert, Rocker Zhang,
+        Ronan Pigott, Samuel Dainard, Sebastian Bernardt,
+        Sergei Trofimovich, Simon Lucido, Simon de Vlieger, Simran Singh,
+        Sriman Achanta, Stephane Chazelas, Temuri Doghonadze,
+        Tobias Heider, Tobias Stoeckmann, Todd Zullinger, TristanInSec,
+        Valentin David, Vincent Mihalkovic, Vitaly Kuznetsov,
+        Walter McKelvie, Yaping Li, Yu Watanabe, Yuri Chornoivan,
+        Zbigniew Jędrzejewski-Szmek, albertescanes, azureuser, drhydroxide,
+        favilances, fecet, glemco, hschloss, ipv6, ishwarbb, joo es, kakolla,
+        kostich, mukunda katta, naly zzwd, noxiouz, r-vdp, roib, rusty-snake,
+        seaeunlee, ssahani, vad, vlefebvre,
+        Дамјан Георгиевски, наб, 我超厉害, 김인수
+
+        — Edinburgh, 2026/05/26
 
 CHANGES WITH 260:
 
